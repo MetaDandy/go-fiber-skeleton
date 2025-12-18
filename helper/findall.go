@@ -18,16 +18,11 @@ type FindAllOptions struct {
 }
 
 func NewFindAllOptionsFromQuery(c *fiber.Ctx) *FindAllOptions {
-	limitParam := c.Query("limit", "30")
+	limitParam := c.Query("limit", "10")
 	offsetParam := c.Query("offset", "0")
 
 	limit, _ := strconv.ParseUint(limitParam, 10, 32)
 	offset, _ := strconv.ParseUint(offsetParam, 10, 32)
-
-	// Set maximum limit to 30
-	if limit == 0 || limit > 30 {
-		limit = 30
-	}
 
 	return &FindAllOptions{
 		OrderBy:     c.Query("order_by", "created_at"),
