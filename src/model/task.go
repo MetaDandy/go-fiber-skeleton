@@ -14,3 +14,7 @@ type Task struct {
 	UserID uuid.UUID `gorm:"type:uuid;"`
 	User   User      `gorm:"foreignKey:UserID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 }
+
+func (Task) TableName() string {
+	return "task"
+}

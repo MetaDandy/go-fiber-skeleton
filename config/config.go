@@ -34,13 +34,12 @@ func Load() {
 			log.Fatal("DATABASE_URL not set in .env file")
 		}
 
+		Migrate(dns)
+
 		DB, err = gorm.Open(postgres.Open(dns), &gorm.Config{})
 		if err == nil {
 			log.Printf("Database connected successfully after %d attempt(s)", i+1)
-			if os.Getenv("AUTO_MIGRATE") == "true" {
-				Migrate(DB)
-				seed.Seeder(DB)
-			}
+			seed.Seeder(DB)
 			return
 		}
 

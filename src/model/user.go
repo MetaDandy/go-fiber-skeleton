@@ -7,3 +7,7 @@ type User struct {
 	Name  string
 	Email string `gorm:"uniqueIndex"`
 }
+
+func (User) TableName() string {
+	return "users"
+}
