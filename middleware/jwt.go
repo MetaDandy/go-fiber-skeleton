@@ -10,7 +10,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func JwtMiddleware() fiber.Handler {
+func Jwt() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		tokenString := c.Get("Authorization")
 		if tokenString == "" {

@@ -1,9 +1,9 @@
 package enum
 
-type StatusEnum string
+type Status string
 
 const (
-	StatusPending  StatusEnum = "pending"
-	StatusActive   StatusEnum = "active"
-	StatusApproved StatusEnum = "approved"
+	StatusPending  Status = "pending"
+	StatusActive   Status = "active"
+	StatusApproved Status = "approved"
 )

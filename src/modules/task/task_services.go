@@ -35,7 +35,7 @@ func (s *Service) Create(input CreateTaskDto) (*response.TaskResponse, error) {
 		ID:          uuid.New(),
 		Title:       input.Title,
 		Description: input.Description,
-		Status:      enum.StatusEnum(input.Status),
+		Status:      enum.Status(input.Status),
 		UserID:      userID,
 	}
 

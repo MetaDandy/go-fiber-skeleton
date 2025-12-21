@@ -220,7 +220,7 @@ type Task struct {
     ID          uuid.UUID
     Title       string
     Description string
-    Status      StatusEnum // pending | active | approved
+    Status      Status // pending | active | approved
     UserID      uuid.UUID  // Foreign Key
     User        User       // Relación (Preload automático)
 }

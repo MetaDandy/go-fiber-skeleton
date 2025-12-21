@@ -7,7 +7,7 @@ import (
 )
 
 func Seeder(db *gorm.DB) {
-	if err := SeedUsers(db); err != nil {
+	if err := Users(db); err != nil {
 		log.Fatalf("Error al seedear usuarios: %v", err)
 	}
 }

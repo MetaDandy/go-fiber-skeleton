@@ -36,7 +36,7 @@ func (r *Repo) FindAll(opts *helper.FindAllOptions) ([]model.Task, int64, error)
 	var finded []model.Task
 	query := r.db.Preload("User").Model(model.Task{})
 	var total int64
-	query, total = helper.ApplyFindAllOptions(query, opts)
+	query, total = opts.ApplyFindAllOptions(query)
 
 	err := query.Find(&finded).Error
 	return finded, total, err
