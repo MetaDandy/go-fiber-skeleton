@@ -18,7 +18,7 @@ type Repo struct {
 	db *gorm.DB
 }
 
-func NewRepo(db *gorm.DB) *Repo {
+func NewRepo(db *gorm.DB) TaskRepo {
 	return &Repo{db: db}
 }
 

@@ -11,6 +11,7 @@ type FindAllOptions struct {
 	OrderBy     string
 	Sort        string
 	Search      string
+	SearchValue string
 	Limit       uint
 	Offset      uint
 	ShowDeleted bool
@@ -28,6 +29,7 @@ func NewFindAllOptionsFromQuery(c *fiber.Ctx) *FindAllOptions {
 		OrderBy:     c.Query("order_by", "created_at"),
 		Sort:        c.Query("sort", "desc"),
 		Search:      c.Query("search", ""),
+		SearchValue: c.Query("search_value", ""),
 		Limit:       uint(limit),
 		Offset:      uint(offset),
 		ShowDeleted: c.QueryBool("show_deleted", false),
@@ -63,7 +65,10 @@ func ApplyFindAllOptions(query *gorm.DB, opts *FindAllOptions) (*gorm.DB, int64)
 	}
 
 	if opts.Search != "" {
-		query = query.Where("name ILIKE ?", "%"+opts.Search+"%")
+		if opts.SearchValue == "" {
+			opts.SearchValue = "name"
+		}
+		query = query.Where(opts.Search+" ILIKE ?", "%"+opts.SearchValue+"%")
 	}
 
 	query.Count(&total)

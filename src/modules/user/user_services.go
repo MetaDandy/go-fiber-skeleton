@@ -11,7 +11,7 @@ import (
 type UserService interface {
 	Create(input CreateUserDto) (*response.UserResponse, error)
 	FindByID(id string) (*response.UserResponse, error)
-	FindAll(opts *helper.FindAllOptions) (*helper.PaginatedResponse[response.UserResponse], error)
+	FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.UserResponse], error)
 	Update(id string, input UpdateUserDto) (*response.UserResponse, error)
 	Delete(id string) error
 }
@@ -47,7 +47,7 @@ func (s *Service) FindByID(id string) (*response.UserResponse, error) {
 	return &dto, nil
 }
 
-func (s *Service) FindAll(opts *helper.FindAllOptions) (*helper.PaginatedResponse[response.UserResponse], error) {
+func (s *Service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.UserResponse], error) {
 	finded, total, err := s.repo.FindAll(opts)
 	if err != nil {
 		return nil, err
@@ -55,7 +55,7 @@ func (s *Service) FindAll(opts *helper.FindAllOptions) (*helper.PaginatedRespons
 	dtos := response.UserToListDto(finded)
 	pages := uint((total + int64(opts.Limit) - 1) / int64(opts.Limit))
 
-	return &helper.PaginatedResponse[response.UserResponse]{
+	return &response.Paginated[response.UserResponse]{
 		Data:   dtos,
 		Total:  total,
 		Limit:  opts.Limit,

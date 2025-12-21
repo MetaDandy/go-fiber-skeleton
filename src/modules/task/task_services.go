@@ -12,7 +12,7 @@ import (
 type TaskService interface {
 	Create(input CreateTaskDto) (*response.TaskResponse, error)
 	FindByID(id string) (*response.TaskResponse, error)
-	FindAll(opts *helper.FindAllOptions) (*helper.PaginatedResponse[response.TaskResponse], error)
+	FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.TaskResponse], error)
 	Update(id string, input UpdateTaskDto) (*response.TaskResponse, error)
 	Delete(id string) error
 }
@@ -57,7 +57,7 @@ func (s *Service) FindByID(id string) (*response.TaskResponse, error) {
 	return &dto, nil
 }
 
-func (s *Service) FindAll(opts *helper.FindAllOptions) (*helper.PaginatedResponse[response.TaskResponse], error) {
+func (s *Service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.TaskResponse], error) {
 	finded, total, err := s.repo.FindAll(opts)
 	if err != nil {
 		return nil, err
@@ -65,7 +65,7 @@ func (s *Service) FindAll(opts *helper.FindAllOptions) (*helper.PaginatedRespons
 	dtos := response.TaskToListDto(finded)
 	pages := uint((total + int64(opts.Limit) - 1) / int64(opts.Limit))
 
-	return &helper.PaginatedResponse[response.TaskResponse]{
+	return &response.Paginated[response.TaskResponse]{
 		Data:   dtos,
 		Total:  total,
 		Limit:  opts.Limit,
