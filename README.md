@@ -178,13 +178,13 @@ Cada módulo (ej: `user`, `task`) sigue este patrón:
 ```
 HTTP Request
     ↓
-Handler.Create() → Parsea CreateUserDto
+Handler.Create() → Parsea Create
     ↓
 Service.Create() → Valida y crea User
     ↓
 Repo.Create() → Ejecuta INSERT en BD
     ↓
-Service retorna UserResponse
+Service retorna User
     ↓
 Handler retorna JSON response
     ↓

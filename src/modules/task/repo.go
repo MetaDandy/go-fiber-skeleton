@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
-type TaskRepo interface {
+type Repo interface {
 	Create(m model.Task) error
 	FindByID(id string) (model.Task, error)
 	FindAll(opts *helper.FindAllOptions) ([]model.Task, int64, error)
@@ -14,25 +14,25 @@ type TaskRepo interface {
 	Delete(id string) error
 }
 
-type Repo struct {
+type repo struct {
 	db *gorm.DB
 }
 
-func NewRepo(db *gorm.DB) TaskRepo {
-	return &Repo{db: db}
+func NewRepo(db *gorm.DB) Repo {
+	return &repo{db: db}
 }
 
-func (r *Repo) Create(m model.Task) error {
+func (r *repo) Create(m model.Task) error {
 	return r.db.Create(&m).Error
 }
 
-func (r *Repo) FindByID(id string) (model.Task, error) {
+func (r *repo) FindByID(id string) (model.Task, error) {
 	var task model.Task
 	err := r.db.Preload("User").First(&task, "id = ?", id).Error
 	return task, err
 }
 
-func (r *Repo) FindAll(opts *helper.FindAllOptions) ([]model.Task, int64, error) {
+func (r *repo) FindAll(opts *helper.FindAllOptions) ([]model.Task, int64, error) {
 	var finded []model.Task
 	query := r.db.Preload("User").Model(model.Task{})
 	var total int64
@@ -42,10 +42,10 @@ func (r *Repo) FindAll(opts *helper.FindAllOptions) ([]model.Task, int64, error)
 	return finded, total, err
 }
 
-func (r *Repo) Update(m model.Task) error {
+func (r *repo) Update(m model.Task) error {
 	return r.db.Save(&m).Error
 }
 
-func (r *Repo) Delete(id string) error {
+func (r *repo) Delete(id string) error {
 	return r.db.Delete(&model.Task{}, "id = ?", id).Error
 }

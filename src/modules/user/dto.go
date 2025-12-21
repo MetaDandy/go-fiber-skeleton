@@ -1,11 +1,11 @@
 package user
 
-type CreateUserDto struct {
+type Create struct {
 	Name  string `json:"name" validate:"required"`
 	Email string `json:"email" validate:"required,email"`
 }
 
-type UpdateUserDto struct {
+type Update struct {
 	Name  *string `json:"name"`
 	Email *string `json:"email" validate:"omitempty,email"`
 }

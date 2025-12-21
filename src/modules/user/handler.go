@@ -1,11 +1,11 @@
-package task
+package user
 
 import (
 	"github.com/MetaDandy/go-fiber-skeleton/helper"
 	"github.com/gofiber/fiber/v2"
 )
 
-type TaskHandler interface {
+type Handler interface {
 	RegisterRoutes(router fiber.Router)
 	Create(c *fiber.Ctx) error
 	FindAll(c *fiber.Ctx) error
@@ -14,40 +14,40 @@ type TaskHandler interface {
 	Delete(c *fiber.Ctx) error
 }
 
-type Handler struct {
-	service TaskService
+type handler struct {
+	service Service
 }
 
-func NewTaskHandler(service TaskService) TaskHandler {
-	return &Handler{
+func NewHandler(service Service) Handler {
+	return &handler{
 		service: service,
 	}
 }
 
-func (h *Handler) RegisterRoutes(router fiber.Router) {
-	tasks := router.Group("/tasks")
-	tasks.Post("/", h.Create)
-	tasks.Get("/", h.FindAll)
-	tasks.Get("/:id", h.FindByID)
-	tasks.Put("/:id", h.Update)
-	tasks.Delete("/:id", h.Delete)
+func (h *handler) RegisterRoutes(router fiber.Router) {
+	users := router.Group("/users")
+	users.Post("/", h.Create)
+	users.Get("/", h.FindAll)
+	users.Get("/:id", h.FindByID)
+	users.Put("/:id", h.Update)
+	users.Delete("/:id", h.Delete)
 }
 
-func (h *Handler) Create(c *fiber.Ctx) error {
-	var input CreateTaskDto
+func (h *handler) Create(c *fiber.Ctx) error {
+	var input Create
 	if err := c.BodyParser(&input); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid input")
 	}
 
-	task, err := h.service.Create(input)
+	user, err := h.service.Create(input)
 	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "Could not create task")
+		return fiber.NewError(fiber.StatusInternalServerError, "Could not create user")
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(task)
+	return c.Status(fiber.StatusCreated).JSON(user)
 }
 
-func (h *Handler) FindAll(c *fiber.Ctx) error {
+func (h *handler) FindAll(c *fiber.Ctx) error {
 	opts := helper.NewFindAllOptionsFromQuery(c)
 	finded, err := h.service.FindAll(opts)
 	if err != nil {
@@ -58,7 +58,7 @@ func (h *Handler) FindAll(c *fiber.Ctx) error {
 	return c.JSON(finded)
 }
 
-func (h *Handler) FindByID(c *fiber.Ctx) error {
+func (h *handler) FindByID(c *fiber.Ctx) error {
 	id := c.Params("id")
 	finded, err := h.service.FindByID(id)
 	if err != nil {
@@ -70,8 +70,8 @@ func (h *Handler) FindByID(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(finded)
 }
 
-func (h *Handler) Update(c *fiber.Ctx) error {
-	var input UpdateTaskDto
+func (h *handler) Update(c *fiber.Ctx) error {
+	var input Update
 
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -91,7 +91,7 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(updated)
 }
 
-func (h *Handler) Delete(c *fiber.Ctx) error {
+func (h *handler) Delete(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	if err := h.service.Delete(id); err != nil {
@@ -100,7 +100,5 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 		})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "Task deleted successfully",
-	})
+	return c.Status(fiber.StatusNoContent).Send(nil)
 }

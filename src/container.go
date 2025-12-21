@@ -7,18 +7,18 @@ import (
 )
 
 type Container struct {
-	UserHandler user.UserHandler
-	TaskHandler task.TaskHandler
+	UserHandler user.Handler
+	TaskHandler task.Handler
 }
 
 func SetupContainer() *Container {
 	userRepo := user.NewRepo(config.DB)
 	userService := user.NewService(userRepo)
-	userHandler := user.NewUserHandler(userService)
+	userHandler := user.NewHandler(userService)
 
 	taskRepo := task.NewRepo(config.DB)
 	taskService := task.NewService(taskRepo)
-	taskHandler := task.NewTaskHandler(taskService)
+	taskHandler := task.NewHandler(taskService)
 
 	return &Container{
 		UserHandler: userHandler,

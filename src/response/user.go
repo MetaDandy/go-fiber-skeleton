@@ -5,21 +5,21 @@ import (
 	"github.com/jinzhu/copier"
 )
 
-type UserResponse struct {
+type User struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Email string `json:"email"`
 }
 
-func UserToDto(m *model.User) UserResponse {
-	var dto UserResponse
+func UserToDto(m *model.User) User {
+	var dto User
 	copier.Copy(&dto, m)
 
 	return dto
 }
 
-func UserToListDto(m []model.User) []UserResponse {
-	out := make([]UserResponse, len(m))
+func UserToListDto(m []model.User) []User {
+	out := make([]User, len(m))
 	for i := range m {
 		out[i] = UserToDto(&m[i])
 	}

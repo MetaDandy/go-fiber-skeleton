@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
-type UserRepo interface {
+type Repo interface {
 	Create(m model.User) error
 	FindByID(id string) (model.User, error)
 	FindAll(opts *helper.FindAllOptions) ([]model.User, int64, error)
@@ -14,25 +14,25 @@ type UserRepo interface {
 	Delete(id string) error
 }
 
-type Repo struct {
+type repo struct {
 	db *gorm.DB
 }
 
-func NewRepo(db *gorm.DB) *Repo {
-	return &Repo{db: db}
+func NewRepo(db *gorm.DB) *repo {
+	return &repo{db: db}
 }
 
-func (r *Repo) Create(m model.User) error {
+func (r *repo) Create(m model.User) error {
 	return r.db.Create(&m).Error
 }
 
-func (r *Repo) FindByID(id string) (model.User, error) {
+func (r *repo) FindByID(id string) (model.User, error) {
 	var user model.User
 	err := r.db.First(&user, "id = ?", id).Error
 	return user, err
 }
 
-func (r *Repo) FindAll(opts *helper.FindAllOptions) ([]model.User, int64, error) {
+func (r *repo) FindAll(opts *helper.FindAllOptions) ([]model.User, int64, error) {
 	var finded []model.User
 	query := r.db.Model(model.User{})
 	var total int64
@@ -42,10 +42,10 @@ func (r *Repo) FindAll(opts *helper.FindAllOptions) ([]model.User, int64, error)
 	return finded, total, err
 }
 
-func (r *Repo) Update(m model.User) error {
+func (r *repo) Update(m model.User) error {
 	return r.db.Save(&m).Error
 }
 
-func (r *Repo) Delete(id string) error {
+func (r *repo) Delete(id string) error {
 	return r.db.Delete(&model.User{}, "id = ?", id).Error
 }

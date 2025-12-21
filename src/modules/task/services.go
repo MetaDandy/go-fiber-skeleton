@@ -9,23 +9,23 @@ import (
 	"github.com/jinzhu/copier"
 )
 
-type TaskService interface {
-	Create(input CreateTaskDto) (*response.TaskResponse, error)
-	FindByID(id string) (*response.TaskResponse, error)
-	FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.TaskResponse], error)
-	Update(id string, input UpdateTaskDto) (*response.TaskResponse, error)
+type Service interface {
+	Create(input Create) (*response.Task, error)
+	FindByID(id string) (*response.Task, error)
+	FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.Task], error)
+	Update(id string, input Update) (*response.Task, error)
 	Delete(id string) error
 }
 
-type Service struct {
-	repo TaskRepo
+type service struct {
+	repo Repo
 }
 
-func NewService(repo TaskRepo) TaskService {
-	return &Service{repo: repo}
+func NewService(repo Repo) Service {
+	return &service{repo: repo}
 }
 
-func (s *Service) Create(input CreateTaskDto) (*response.TaskResponse, error) {
+func (s *service) Create(input Create) (*response.Task, error) {
 	userID, err := uuid.Parse(input.UserID)
 	if err != nil {
 		return nil, err
@@ -47,7 +47,7 @@ func (s *Service) Create(input CreateTaskDto) (*response.TaskResponse, error) {
 	return &dto, nil
 }
 
-func (s *Service) FindByID(id string) (*response.TaskResponse, error) {
+func (s *service) FindByID(id string) (*response.Task, error) {
 	task, err := s.repo.FindByID(id)
 	if err != nil {
 		return nil, err
@@ -57,7 +57,7 @@ func (s *Service) FindByID(id string) (*response.TaskResponse, error) {
 	return &dto, nil
 }
 
-func (s *Service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.TaskResponse], error) {
+func (s *service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.Task], error) {
 	finded, total, err := s.repo.FindAll(opts)
 	if err != nil {
 		return nil, err
@@ -65,7 +65,7 @@ func (s *Service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[resp
 	dtos := response.TaskToListDto(finded)
 	pages := uint((total + int64(opts.Limit) - 1) / int64(opts.Limit))
 
-	return &response.Paginated[response.TaskResponse]{
+	return &response.Paginated[response.Task]{
 		Data:   dtos,
 		Total:  total,
 		Limit:  opts.Limit,
@@ -74,7 +74,7 @@ func (s *Service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[resp
 	}, nil
 }
 
-func (s *Service) Update(id string, input UpdateTaskDto) (*response.TaskResponse, error) {
+func (s *service) Update(id string, input Update) (*response.Task, error) {
 	task, err := s.repo.FindByID(id)
 	if err != nil {
 		return nil, err
@@ -97,6 +97,6 @@ func (s *Service) Update(id string, input UpdateTaskDto) (*response.TaskResponse
 	return &dto, nil
 }
 
-func (s *Service) Delete(id string) error {
+func (s *service) Delete(id string) error {
 	return s.repo.Delete(id)
 }

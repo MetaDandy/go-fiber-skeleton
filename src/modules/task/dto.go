@@ -1,13 +1,13 @@
 package task
 
-type CreateTaskDto struct {
+type Create struct {
 	Title       string `json:"title" validate:"required"`
 	Description string `json:"description" validate:"required"`
 	Status      string `json:"status" validate:"required"`
 	UserID      string `json:"user_id" validate:"required,uuid"`
 }
 
-type UpdateTaskDto struct {
+type Update struct {
 	Title       *string `json:"title"`
 	Description *string `json:"description"`
 	Status      *string `json:"status"`
