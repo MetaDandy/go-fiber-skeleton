@@ -1,6 +1,8 @@
 package response
 
 import (
+	"time"
+
 	"github.com/MetaDandy/go-fiber-skeleton/src/model"
 	"github.com/google/uuid"
 	"github.com/jinzhu/copier"
@@ -12,6 +14,9 @@ type Task struct {
 	Description string `json:"description"`
 	Status      string `json:"status"`
 	User        User   `json:"user"`
+
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 func TaskToDto(m *model.Task) Task {
@@ -23,6 +28,8 @@ func TaskToDto(m *model.Task) Task {
 	if m.User.ID != uuid.Nil {
 		dto.User = UserToDto(&m.User)
 	}
+	dto.CreatedAt = m.CreatedAt.Format(time.RFC3339)
+	dto.UpdatedAt = m.UpdatedAt.Format(time.RFC3339)
 
 	return dto
 }
