@@ -64,13 +64,6 @@ func (f *FindAllOptions) ApplyFindAllOptions(query *gorm.DB) (*gorm.DB, int64) {
 		query = query.Unscoped() // trae todos
 	}
 
-	if f.Search != "" {
-		if f.SearchValue == "" {
-			f.SearchValue = "name"
-		}
-		query = query.Where(f.Search+" ILIKE ?", "%"+f.SearchValue+"%")
-	}
-
 	query.Count(&total)
 	query = query.Limit(int(f.Limit)).Offset(int(f.Offset))
 	return query, total

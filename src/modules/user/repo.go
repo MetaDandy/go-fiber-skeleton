@@ -35,6 +35,15 @@ func (r *repo) FindByID(id string) (model.User, error) {
 func (r *repo) FindAll(opts *helper.FindAllOptions) ([]model.User, int64, error) {
 	var finded []model.User
 	query := r.db.Model(model.User{})
+
+	if opts.Search != "" {
+		query = query.Where(
+			`name ILIKE ? OR email ILIKE ?`,
+			"%"+opts.Search+"%",
+			"%"+opts.Search+"%",
+		)
+	}
+
 	var total int64
 	query, total = opts.ApplyFindAllOptions(query)
 
