@@ -1,2 +1,6 @@
 .env
 tmp
+
+# Bruno environments (local y prod con credenciales reales)
+rest/environments/carpyen.local.bru
+rest/environments/carpyen.prod.bru
