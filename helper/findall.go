@@ -11,7 +11,6 @@ type FindAllOptions struct {
 	OrderBy     string
 	Sort        string
 	Search      string
-	SearchValue string
 	Limit       uint
 	Offset      uint
 	ShowDeleted bool
@@ -29,7 +28,6 @@ func NewFindAllOptionsFromQuery(c *fiber.Ctx) *FindAllOptions {
 		OrderBy:     c.Query("order_by", "created_at"),
 		Sort:        c.Query("sort", "desc"),
 		Search:      c.Query("search", ""),
-		SearchValue: c.Query("search_value", ""),
 		Limit:       uint(limit),
 		Offset:      uint(offset),
 		ShowDeleted: c.QueryBool("show_deleted", false),

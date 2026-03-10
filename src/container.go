@@ -4,11 +4,13 @@ import (
 	"github.com/MetaDandy/go-fiber-skeleton/config"
 	"github.com/MetaDandy/go-fiber-skeleton/src/modules/task"
 	"github.com/MetaDandy/go-fiber-skeleton/src/modules/user"
+	"github.com/gofiber/fiber/v2"
 )
 
 type Container struct {
-	UserHandler user.Handler
-	TaskHandler task.Handler
+	Handlers []interface {
+		RegisterRoutes(fiber.Router)
+	}
 }
 
 func SetupContainer() *Container {
@@ -21,7 +23,11 @@ func SetupContainer() *Container {
 	taskHandler := task.NewHandler(taskService)
 
 	return &Container{
-		UserHandler: userHandler,
-		TaskHandler: taskHandler,
+		Handlers: []interface {
+			RegisterRoutes(fiber.Router)
+		}{
+			userHandler,
+			taskHandler,
+		},
 	}
 }

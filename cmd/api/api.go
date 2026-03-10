@@ -12,12 +12,7 @@ func SetupApi(app *fiber.App, c *src.Container) {
 		return ctx.SendString("Aloha")
 	})
 
-	handlers := []func(fiber.Router){
-		c.TaskHandler.RegisterRoutes,
-		c.UserHandler.RegisterRoutes,
-	}
-
-	for _, register := range handlers {
-		register(v1)
+	for _, handler := range c.Handlers {
+		handler.RegisterRoutes(v1)
 	}
 }
