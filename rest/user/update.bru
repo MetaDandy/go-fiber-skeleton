@@ -1,0 +1,26 @@
+meta {
+  name: update
+  type: http
+  seq: 4
+}
+
+patch {
+  url: {{url}}/users/:id
+  body: json
+  auth: inherit
+}
+
+params:path {
+  id: 40f1a7c9-57a2-475c-838a-8259060f3a01
+}
+
+body:json {
+  {
+    "name": "adios"
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

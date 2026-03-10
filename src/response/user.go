@@ -11,6 +11,7 @@ type User struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Email string `json:"email"`
+	Task  []Task `json:"task"`
 
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
@@ -19,8 +20,13 @@ type User struct {
 func UserToDto(m *model.User) User {
 	var dto User
 	copier.Copy(&dto, m)
+	dto.ID = m.ID.String()
 	dto.CreatedAt = m.CreatedAt.Format(time.RFC3339)
 	dto.UpdatedAt = m.UpdatedAt.Format(time.RFC3339)
+
+	if len(m.Tasks) > 0 {
+		dto.Task = TaskToListDto(m.Tasks)
+	}
 
 	return dto
 }

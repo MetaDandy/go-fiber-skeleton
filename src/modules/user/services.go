@@ -9,10 +9,10 @@ import (
 )
 
 type Service interface {
-	Create(input Create) (*response.User, error)
+	Create(input Create) error
 	FindByID(id string) (*response.User, error)
 	FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.User], error)
-	Update(id string, input Update) (*response.User, error)
+	Update(id string, input Update) error
 	Delete(id string) error
 }
 
@@ -24,17 +24,16 @@ func NewService(repo Repo) Service {
 	return &service{repo: repo}
 }
 
-func (s *service) Create(input Create) (*response.User, error) {
+func (s *service) Create(input Create) error {
 	user := model.User{}
-	copier.Copy(user, input)
+	copier.Copy(&user, &input)
 	user.ID = uuid.New()
 
 	if err := s.repo.Create(user); err != nil {
-		return nil, err
+		return err
 	}
 
-	dto := response.UserToDto(&user)
-	return &dto, nil
+	return nil
 }
 
 func (s *service) FindByID(id string) (*response.User, error) {
@@ -64,10 +63,10 @@ func (s *service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[resp
 	}, nil
 }
 
-func (s *service) Update(id string, input Update) (*response.User, error) {
+func (s *service) Update(id string, input Update) error {
 	user, err := s.repo.FindByID(id)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	opt := copier.Option{
@@ -75,16 +74,15 @@ func (s *service) Update(id string, input Update) (*response.User, error) {
 		DeepCopy:    true,
 	}
 
-	if err := copier.CopyWithOption(user, &input, opt); err != nil {
-		return nil, err
+	if err := copier.CopyWithOption(&user, &input, opt); err != nil {
+		return err
 	}
 
 	if err := s.repo.Update(user); err != nil {
-		return nil, err
+		return err
 	}
 
-	dto := response.UserToDto(&user)
-	return &dto, nil
+	return nil
 }
 
 func (s *service) Delete(id string) error {

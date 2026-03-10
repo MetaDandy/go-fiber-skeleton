@@ -4,6 +4,15 @@ meta {
   seq: 1
 }
 
-get {
-  url: 
+post {
+  url: {{url}}/users
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "Hola",
+    "email": "hola@gmail.com"
+  }
 }

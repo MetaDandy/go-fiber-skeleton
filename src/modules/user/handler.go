@@ -29,7 +29,7 @@ func (h *handler) RegisterRoutes(router fiber.Router) {
 	users.Post("/", h.Create)
 	users.Get("/", h.FindAll)
 	users.Get("/:id", h.FindByID)
-	users.Put("/:id", h.Update)
+	users.Patch("/:id", h.Update)
 	users.Delete("/:id", h.Delete)
 }
 
@@ -39,12 +39,12 @@ func (h *handler) Create(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid input")
 	}
 
-	user, err := h.service.Create(input)
+	err := h.service.Create(input)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Could not create user")
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(user)
+	return c.SendStatus(fiber.StatusCreated)
 }
 
 func (h *handler) FindAll(c *fiber.Ctx) error {
@@ -81,14 +81,14 @@ func (h *handler) Update(c *fiber.Ctx) error {
 
 	id := c.Params("id")
 
-	updated, err := h.service.Update(id, input)
+	err := h.service.Update(id, input)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(updated)
+	return c.SendStatus(fiber.StatusOK)
 }
 
 func (h *handler) Delete(c *fiber.Ctx) error {

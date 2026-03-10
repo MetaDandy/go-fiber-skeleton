@@ -1,0 +1,20 @@
+meta {
+  name: findbyid
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{url}}/users/:id
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: 40f1a7c9-57a2-475c-838a-8259060f3a01
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

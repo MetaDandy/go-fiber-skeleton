@@ -28,13 +28,13 @@ func (r *repo) Create(m model.Task) error {
 
 func (r *repo) FindByID(id string) (model.Task, error) {
 	var task model.Task
-	err := r.db.Preload("User").First(&task, "id = ?", id).Error
+	err := r.db.First(&task, "id = ?", id).Error
 	return task, err
 }
 
 func (r *repo) FindAll(opts *helper.FindAllOptions) ([]model.Task, int64, error) {
 	var finded []model.Task
-	query := r.db.Preload("User").Model(model.Task{})
+	query := r.db.Model(model.Task{})
 
 	if opts.Search != "" {
 		query = query.Where(

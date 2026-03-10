@@ -12,6 +12,8 @@ type User struct {
 	Name  string
 	Email string `gorm:"uniqueIndex"`
 
+	Tasks []Task `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt `gorm:"index"`
