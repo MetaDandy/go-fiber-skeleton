@@ -26,6 +26,11 @@ func NewService(repo Repo) Service {
 }
 
 func (s *service) Create(input Create) (*response.Task, error) {
+	status, err := enum.ParseStatus(input.Status)
+	if err != nil {
+		return nil, err
+	}
+
 	userID, err := uuid.Parse(input.UserID)
 	if err != nil {
 		return nil, err
@@ -35,7 +40,7 @@ func (s *service) Create(input Create) (*response.Task, error) {
 		ID:          uuid.New(),
 		Title:       input.Title,
 		Description: input.Description,
-		Status:      enum.Status(input.Status),
+		Status:      status,
 		UserID:      userID,
 	}
 

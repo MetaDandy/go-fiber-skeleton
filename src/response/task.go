@@ -17,6 +17,8 @@ type Task struct {
 func TaskToDto(m *model.Task) Task {
 	var dto Task
 	copier.Copy(&dto, m)
+	dto.ID = m.ID.String()
+	dto.Status = m.Status.String()
 
 	if m.User.ID != uuid.Nil {
 		dto.User = UserToDto(&m.User)

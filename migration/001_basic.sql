@@ -7,13 +7,13 @@ CREATE TABLE users (
     email TEXT NOT NULL UNIQUE
 );
 
-CREATE TYPE status_enum AS ENUM ('pending', 'in_progress', 'done');
+CREATE TYPE status_enum AS ENUM ('pendiente', 'en_progreso', 'hecho');
 
 CREATE TABLE task (
     id UUID PRIMARY KEY,
     title TEXT NOT NULL,
     description TEXT,
-    status status_enum NOT NULL DEFAULT 'pending',
+    status status_enum NOT NULL DEFAULT 'pendiente',
     user_id UUID,
     CONSTRAINT fk_user FOREIGN KEY(user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE SET NULL
 );
