@@ -1,6 +1,8 @@
 package task
 
 import (
+	"fmt"
+
 	"github.com/MetaDandy/go-fiber-skeleton/helper"
 	"github.com/MetaDandy/go-fiber-skeleton/src/enum"
 	"github.com/MetaDandy/go-fiber-skeleton/src/model"
@@ -17,12 +19,17 @@ type Service interface {
 	Delete(id string) error
 }
 
-type service struct {
-	repo Repo
+type userRepo interface {
+	Exists(id string) error
 }
 
-func NewService(repo Repo) Service {
-	return &service{repo: repo}
+type service struct {
+	repo  Repo
+	uRepo userRepo
+}
+
+func NewService(repo Repo, uRepo userRepo) Service {
+	return &service{repo: repo, uRepo: uRepo}
 }
 
 func (s *service) Create(input Create) (*response.Task, error) {
@@ -31,9 +38,9 @@ func (s *service) Create(input Create) (*response.Task, error) {
 		return nil, err
 	}
 
-	userID, err := uuid.Parse(input.UserID)
+	err = s.uRepo.Exists(input.UserID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("user with id: %v not exist %v", input.UserID, err)
 	}
 
 	task := model.Task{
@@ -41,7 +48,7 @@ func (s *service) Create(input Create) (*response.Task, error) {
 		Title:       input.Title,
 		Description: input.Description,
 		Status:      status,
-		UserID:      userID,
+		UserID:      uuid.MustParse(input.UserID),
 	}
 
 	if err := s.repo.Create(task); err != nil {

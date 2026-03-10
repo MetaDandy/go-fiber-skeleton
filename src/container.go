@@ -17,7 +17,7 @@ func SetupContainer() *Container {
 	userHandler := user.NewHandler(userService)
 
 	taskRepo := task.NewRepo(config.DB)
-	taskService := task.NewService(taskRepo)
+	taskService := task.NewService(taskRepo, userRepo)
 	taskHandler := task.NewHandler(taskService)
 
 	return &Container{

@@ -12,6 +12,8 @@ type Repo interface {
 	FindAll(opts *helper.FindAllOptions) ([]model.User, int64, error)
 	Update(m model.User) error
 	Delete(id string) error
+
+	Exists(id string) error
 }
 
 type repo struct {
@@ -57,4 +59,8 @@ func (r *repo) Update(m model.User) error {
 
 func (r *repo) Delete(id string) error {
 	return r.db.Delete(&model.User{}, "id = ?", id).Error
+}
+
+func (r *repo) Exists(id string) error {
+	return r.db.Select("id").First(&model.User{}, "id = ?", id).Error
 }
