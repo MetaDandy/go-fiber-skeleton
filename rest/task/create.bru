@@ -5,11 +5,20 @@ meta {
 }
 
 post {
-  url: {{url}}/task
-  body: none
+  url: {{url}}/tasks
+  body: json
   auth: inherit
+}
+
+body:json {
+  {
+    "title": "hola",
+    "description": "tarea 1",
+    "user_id": "ecac264d-985f-43b6-90f0-6fb6b30f2cc1"
+  }
 }
 
 settings {
   encodeUrl: true
+  timeout: 0
 }

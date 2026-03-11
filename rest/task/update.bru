@@ -6,14 +6,21 @@ meta {
 
 patch {
   url: {{url}}/tasks/:id
-  body: none
+  body: json
   auth: inherit
 }
 
 params:path {
-  id: 
+  id: 0e77c29a-8ff0-44ec-8cef-58f13ec81d1b
+}
+
+body:json {
+  {
+    "description": "tarea editada" 
+  }
 }
 
 settings {
   encodeUrl: true
+  timeout: 0
 }
