@@ -12,10 +12,10 @@ import (
 )
 
 type Service interface {
-	Create(input Create) (*response.Task, error)
+	Create(input Create) error
 	FindByID(id string) (*response.Task, error)
-	FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.Task], error)
-	Update(id string, input Update) (*response.Task, error)
+	FindAll(userID string, opts *helper.FindAllOptions) (*response.Paginated[response.Task], error)
+	Update(id string, input Update) error
 	Delete(id string) error
 }
 
@@ -32,31 +32,25 @@ func NewService(repo Repo, uRepo userRepo) Service {
 	return &service{repo: repo, uRepo: uRepo}
 }
 
-func (s *service) Create(input Create) (*response.Task, error) {
-	status, err := enum.ParseStatus(input.Status)
+func (s *service) Create(input Create) error {
+	err := s.uRepo.Exists(input.UserID)
 	if err != nil {
-		return nil, err
-	}
-
-	err = s.uRepo.Exists(input.UserID)
-	if err != nil {
-		return nil, fmt.Errorf("user with id: %v not exist %v", input.UserID, err)
+		return fmt.Errorf("user with id: %v not exist %v", input.UserID, err)
 	}
 
 	task := model.Task{
 		ID:          uuid.New(),
 		Title:       input.Title,
 		Description: input.Description,
-		Status:      status,
+		Status:      enum.StatusPending,
 		UserID:      uuid.MustParse(input.UserID),
 	}
 
 	if err := s.repo.Create(task); err != nil {
-		return nil, err
+		return fmt.Errorf("failed to create task: %v", err)
 	}
 
-	dto := response.TaskToDto(&task)
-	return &dto, nil
+	return nil
 }
 
 func (s *service) FindByID(id string) (*response.Task, error) {
@@ -69,8 +63,8 @@ func (s *service) FindByID(id string) (*response.Task, error) {
 	return &dto, nil
 }
 
-func (s *service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.Task], error) {
-	finded, total, err := s.repo.FindAll(opts)
+func (s *service) FindAll(userID string, opts *helper.FindAllOptions) (*response.Paginated[response.Task], error) {
+	finded, total, err := s.repo.FindAll(userID, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -86,10 +80,10 @@ func (s *service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[resp
 	}, nil
 }
 
-func (s *service) Update(id string, input Update) (*response.Task, error) {
+func (s *service) Update(id string, input Update) error {
 	task, err := s.repo.FindByID(id)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("task with id: %v not exist %v", id, err)
 	}
 
 	opt := copier.Option{
@@ -98,15 +92,22 @@ func (s *service) Update(id string, input Update) (*response.Task, error) {
 	}
 
 	if err := copier.CopyWithOption(&task, &input, opt); err != nil {
-		return nil, err
+		return fmt.Errorf("failed to update task: %v", err)
+	}
+
+	if input.Status != nil {
+		status, err := enum.ParseStatus(*input.Status)
+		if err != nil {
+			return fmt.Errorf("invalid status: %v", err)
+		}
+		task.Status = status
 	}
 
 	if err := s.repo.Update(task); err != nil {
-		return nil, err
+		return fmt.Errorf("failed to update task: %v", err)
 	}
 
-	dto := response.TaskToDto(&task)
-	return &dto, nil
+	return nil
 }
 
 func (s *service) Delete(id string) error {

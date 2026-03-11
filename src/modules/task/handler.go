@@ -27,9 +27,9 @@ func NewHandler(service Service) Handler {
 func (h *handler) RegisterRoutes(router fiber.Router) {
 	tasks := router.Group("/tasks")
 	tasks.Post("/", h.Create)
-	tasks.Get("/", h.FindAll)
+	tasks.Get("/:id/f", h.FindAll)
 	tasks.Get("/:id", h.FindByID)
-	tasks.Put("/:id", h.Update)
+	tasks.Patch("/:id", h.Update)
 	tasks.Delete("/:id", h.Delete)
 }
 
@@ -39,17 +39,19 @@ func (h *handler) Create(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid input")
 	}
 
-	task, err := h.service.Create(input)
+	err := h.service.Create(input)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Could not create task")
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(task)
+	return c.SendStatus(fiber.StatusCreated)
 }
 
 func (h *handler) FindAll(c *fiber.Ctx) error {
+	// ? Deberia ser c.Locals pero hasta que no implemente auth sera con params
+	userID := c.Params("id")
 	opts := helper.NewFindAllOptionsFromQuery(c)
-	finded, err := h.service.FindAll(opts)
+	finded, err := h.service.FindAll(userID, opts)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": err.Error(),
@@ -81,14 +83,14 @@ func (h *handler) Update(c *fiber.Ctx) error {
 
 	id := c.Params("id")
 
-	updated, err := h.service.Update(id, input)
+	err := h.service.Update(id, input)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(updated)
+	return c.SendStatus(fiber.StatusOK)
 }
 
 func (h *handler) Delete(c *fiber.Ctx) error {
@@ -100,7 +102,5 @@ func (h *handler) Delete(c *fiber.Ctx) error {
 		})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "Task deleted successfully",
-	})
+	return c.SendStatus(fiber.StatusOK)
 }

@@ -9,7 +9,7 @@ import (
 type Repo interface {
 	Create(m model.Task) error
 	FindByID(id string) (model.Task, error)
-	FindAll(opts *helper.FindAllOptions) ([]model.Task, int64, error)
+	FindAll(userID string, opts *helper.FindAllOptions) ([]model.Task, int64, error)
 	Update(m model.Task) error
 	Delete(id string) error
 }
@@ -32,9 +32,12 @@ func (r *repo) FindByID(id string) (model.Task, error) {
 	return task, err
 }
 
-func (r *repo) FindAll(opts *helper.FindAllOptions) ([]model.Task, int64, error) {
+func (r *repo) FindAll(userID string, opts *helper.FindAllOptions) ([]model.Task, int64, error) {
 	var finded []model.Task
 	query := r.db.Model(model.Task{})
+
+	// Filter by user ID
+	query = query.Where("user_id = ?", userID)
 
 	if opts.Search != "" {
 		query = query.Where(
