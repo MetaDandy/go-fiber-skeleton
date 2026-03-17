@@ -27,6 +27,14 @@ func Load() {
 		Port = "8001"
 	}
 
+	//enviroment
+	environment := os.Getenv("ENVIROMENT")
+	if environment == "" {
+		environment = "DEV"
+	}
+
+	runMigration := os.Getenv("RUN_MIGRATION") == "true"
+
 	maxRetries := 10
 	for i := range maxRetries {
 		dns := os.Getenv("DATABASE_URL")
@@ -34,7 +42,9 @@ func Load() {
 			log.Fatal("DATABASE_URL not set in .env file")
 		}
 
-		Migrate(dns)
+		if runMigration {
+			Migrate(dns)
+		}
 
 		DB, err = gorm.Open(postgres.Open(dns), &gorm.Config{})
 		if err == nil {

@@ -3,16 +3,14 @@ package model
 import (
 	"time"
 
-	"github.com/MetaDandy/go-fiber-skeleton/src/enum"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-type Task struct {
-	ID          uuid.UUID `gorm:"type:uuid;primaryKey;"`
-	Title       string
-	Description string
-	Status      enum.Status
+type AuthProvider struct {
+	ID             uuid.UUID `gorm:"type:uuid;primaryKey;"`
+	Provider       string
+	ProviderUserID string
 
 	UserID uuid.UUID `gorm:"type:uuid;"`
 	User   User      `gorm:"foreignKey:UserID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
@@ -22,6 +20,6 @@ type Task struct {
 	DeletedAt gorm.DeletedAt `gorm:"index"`
 }
 
-func (Task) TableName() string {
-	return "task"
+func (AuthProvider) TableName() string {
+	return "AuthProviders"
 }
