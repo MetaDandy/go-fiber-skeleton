@@ -30,7 +30,7 @@ func (r *repo) Create(m model.User) error {
 
 func (r *repo) FindByID(id string) (model.User, error) {
 	var user model.User
-	err := r.db.Preload("Tasks").First(&user, "id = ?", id).Error
+	err := r.db.First(&user, "id = ?", id).Error
 	return user, err
 }
 
