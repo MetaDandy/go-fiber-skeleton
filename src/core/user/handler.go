@@ -9,6 +9,7 @@ import (
 
 	"github.com/MetaDandy/go-fiber-skeleton/helper"
 	"github.com/MetaDandy/go-fiber-skeleton/src/auth"
+	"github.com/MetaDandy/go-fiber-skeleton/src/enum"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -138,7 +139,7 @@ func (h *handler) OAuthLogin(c *fiber.Ctx) error {
 	fmt.Printf("========================================\n\n")
 
 	// Validar proveedor
-	if provider != "google" && provider != "github" && provider != "discord" {
+	if !enum.IsValidAuthProvider(provider) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "provider no soportado",
 		})

@@ -14,6 +14,7 @@ type Repo interface {
 	Delete(id string) error
 
 	Exists(id string) error
+	ExistsByEmail(email string) error
 }
 
 type repo struct {
@@ -63,4 +64,8 @@ func (r *repo) Delete(id string) error {
 
 func (r *repo) Exists(id string) error {
 	return r.db.Select("id").First(&model.User{}, "id = ?", id).Error
+}
+
+func (r *repo) ExistsByEmail(email string) error {
+	return r.db.Select("email").First(&model.User{}, "email = ?", email).Error
 }
