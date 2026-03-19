@@ -8,14 +8,14 @@ import (
 )
 
 type User struct {
-	ID               uuid.UUID `gorm:"type:uuid;primaryKey;"`
-	Name             string
-	Email            string    `gorm:"uniqueIndex"`
-	EmailVerified    bool
-	EmailVerifiedAt  time.Time
-	Phone            string
-	Password         string
-	Picture          string
+	ID              uuid.UUID `gorm:"type:uuid;primaryKey;"`
+	Name            string
+	Email           string `gorm:"uniqueIndex"`
+	EmailVerified   bool
+	EmailVerifiedAt time.Time
+	Phone           string
+	Password        string
+	Picture         string
 
 	RoleID uuid.UUID `gorm:"type:uuid;"`
 	Role   Role      `gorm:"foreignKey:RoleID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`

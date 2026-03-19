@@ -3,6 +3,7 @@ package authentication
 import (
 	"fmt"
 
+	"github.com/MetaDandy/go-fiber-skeleton/constant"
 	"github.com/MetaDandy/go-fiber-skeleton/helper"
 	"github.com/MetaDandy/go-fiber-skeleton/src/enum"
 	"github.com/MetaDandy/go-fiber-skeleton/src/model"
@@ -61,6 +62,7 @@ func (s *service) SignUpPassword(input SignUpPassword) error {
 		Email:         input.Email,
 		Password:      hash,
 		EmailVerified: false,
+		RoleID:        constant.GenericID,
 	}
 
 	al := model.AuthLog{

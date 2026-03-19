@@ -11,6 +11,10 @@ type SignUpPassword struct {
 }
 
 func (s SignUpPassword) Validate() error {
+	if len(s.Password) < 8 {
+		return fmt.Errorf("password must be at least 8 characters")
+	}
+
 	if s.Password != s.RepeatPassword {
 		return fmt.Errorf("password and repeat password do not match")
 	}

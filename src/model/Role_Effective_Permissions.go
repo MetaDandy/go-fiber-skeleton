@@ -22,5 +22,5 @@ type RoleEffectivePermission struct {
 }
 
 func (RoleEffectivePermission) TableName() string {
-	return "RoleEffectivePermissions"
+	return "roleeffectivepermissions"
 }

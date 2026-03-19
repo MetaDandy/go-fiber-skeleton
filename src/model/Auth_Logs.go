@@ -23,5 +23,5 @@ type AuthLog struct {
 }
 
 func (AuthLog) TableName() string {
-	return "AuthLogs"
+	return "authlogs"
 }
