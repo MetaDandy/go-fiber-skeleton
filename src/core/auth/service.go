@@ -1,13 +1,22 @@
 package authentication
 
-import "github.com/MetaDandy/go-fiber-skeleton/src/model"
+import (
+	"fmt"
+
+	"github.com/MetaDandy/go-fiber-skeleton/helper"
+	"github.com/MetaDandy/go-fiber-skeleton/src/enum"
+	"github.com/MetaDandy/go-fiber-skeleton/src/model"
+	"github.com/google/uuid"
+)
 
 type Service interface {
 	UserAuthProviders(email string) ([]string, error)
+	SignUpPassword(input SignUpPassword) error
 }
 
 type uRepo interface {
 	FindByEmail(email string) (model.User, error)
+	ExistsByEmail(email string) error
 }
 
 type service struct {
@@ -31,4 +40,40 @@ func (s *service) UserAuthProviders(email string) ([]string, error) {
 	}
 
 	return providers, nil
+}
+
+func (s *service) SignUpPassword(input SignUpPassword) error {
+	if err := s.uRepo.ExistsByEmail(input.Email); err == nil {
+		return fmt.Errorf("%s already exist", input.Email)
+	}
+
+	if err := input.Validate(); err != nil {
+		return err
+	}
+
+	hash, err := helper.HashPassword(input.Password)
+	if err != nil {
+		return err
+	}
+
+	u := model.User{
+		ID:            uuid.New(),
+		Email:         input.Email,
+		Password:      hash,
+		EmailVerified: false,
+	}
+
+	al := model.AuthLog{
+		ID:        uuid.New(),
+		Event:     enum.SignUpSuccess,
+		UserID:    u.ID,
+		Ip:        input.Ip,
+		UserAgent: input.UserAgent,
+	}
+
+	if err := s.repo.Create(u, al, nil); err != nil {
+		return err
+	}
+
+	return nil
 }
