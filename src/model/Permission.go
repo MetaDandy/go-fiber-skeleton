@@ -3,12 +3,11 @@ package model
 import (
 	"time"
 
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 type Permission struct {
-	ID          uuid.UUID `gorm:"type:uuid;primaryKey;"`
+	ID          string `gorm:"primaryKey;type:varchar(255)"`
 	Description string
 	Name        string
 
