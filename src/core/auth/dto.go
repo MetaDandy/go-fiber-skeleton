@@ -1,6 +1,8 @@
 package authentication
 
-import "fmt"
+import (
+	"github.com/MetaDandy/go-fiber-skeleton/api_error"
+)
 
 type SignUpPassword struct {
 	Email          string `json:"email" validate:"required,email"`
@@ -12,11 +14,11 @@ type SignUpPassword struct {
 
 func (s SignUpPassword) Validate() error {
 	if len(s.Password) < 8 {
-		return fmt.Errorf("password must be at least 8 characters")
+		return api_error.BadRequest("password must be at least 8 characters")
 	}
 
 	if s.Password != s.RepeatPassword {
-		return fmt.Errorf("password and repeat password do not match")
+		return api_error.BadRequest("password and repeat password do not match")
 	}
 
 	return nil

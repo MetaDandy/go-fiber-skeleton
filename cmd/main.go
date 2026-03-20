@@ -7,8 +7,8 @@ import (
 	"github.com/MetaDandy/go-fiber-skeleton/config"
 	"github.com/MetaDandy/go-fiber-skeleton/middleware"
 	"github.com/MetaDandy/go-fiber-skeleton/src"
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/cors"
 )
 
 func main() {
@@ -18,10 +18,13 @@ func main() {
 	app.Use(middleware.Logger())
 
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: os.Getenv("ALLOW_ORIGINS"),
-		AllowMethods: "GET,POST,PATCH,DELETE,OPTIONS",
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+		AllowOrigins: []string{os.Getenv("ALLOW_ORIGINS")},
+		AllowMethods: []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization"},
 	}))
+
+	// Registrar error handler global ANTES de las rutas
+	app.Use(middleware.ErrorHandler)
 
 	c := src.SetupContainer()
 	api.SetupApi(app, c)

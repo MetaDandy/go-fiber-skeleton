@@ -48,10 +48,6 @@ func (s *service) SignUpPassword(input SignUpPassword) error {
 		return fmt.Errorf("%s already exist", input.Email)
 	}
 
-	if err := input.Validate(); err != nil {
-		return err
-	}
-
 	hash, err := helper.HashPassword(input.Password)
 	if err != nil {
 		return err

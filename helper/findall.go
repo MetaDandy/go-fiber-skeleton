@@ -1,37 +1,45 @@
 package helper
 
 import (
-	"strconv"
-
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"gorm.io/gorm"
 )
 
 type FindAllOptions struct {
-	OrderBy     string
-	Sort        string
-	Search      string
-	Limit       uint
-	Offset      uint
-	ShowDeleted bool
-	OnlyDeleted bool
+	OrderBy     string `query:"order_by,default:created_at"`
+	Sort        string `query:"sort,default:desc"`
+	Search      string `query:"search"`
+	Limit       uint   `query:"limit,default:10"`
+	Offset      uint   `query:"offset,default:0"`
+	ShowDeleted bool   `query:"show_deleted,default:false"`
+	OnlyDeleted bool   `query:"only_deleted,default:false"`
 }
 
-func NewFindAllOptionsFromQuery(c *fiber.Ctx) *FindAllOptions {
-	limitParam := c.Query("limit", "10")
-	offsetParam := c.Query("offset", "0")
+func NewFindAllOptionsFromQuery(c fiber.Ctx) *FindAllOptions {
+	q := new(FindAllOptions)
 
-	limit, _ := strconv.ParseUint(limitParam, 10, 32)
-	offset, _ := strconv.ParseUint(offsetParam, 10, 32)
+	// c.Bind().Query() automatically:
+	// - Parses query parameters
+	// - Converts types (string -> int, bool, etc)
+	// - Applies default values from struct tags
+	if err := c.Bind().Query(q); err != nil {
+		// On error, initialize with hardcoded defaults
+		q = &FindAllOptions{
+			OrderBy: "created_at",
+			Sort:    "desc",
+			Limit:   10,
+			Offset:  0,
+		}
+	}
 
 	return &FindAllOptions{
-		OrderBy:     c.Query("order_by", "created_at"),
-		Sort:        c.Query("sort", "desc"),
-		Search:      c.Query("search", ""),
-		Limit:       uint(limit),
-		Offset:      uint(offset),
-		ShowDeleted: c.QueryBool("show_deleted", false),
-		OnlyDeleted: c.QueryBool("only_deleted", false),
+		OrderBy:     q.OrderBy,
+		Sort:        q.Sort,
+		Search:      q.Search,
+		Limit:       uint(q.Limit),
+		Offset:      uint(q.Offset),
+		ShowDeleted: q.ShowDeleted,
+		OnlyDeleted: q.OnlyDeleted,
 	}
 }
 

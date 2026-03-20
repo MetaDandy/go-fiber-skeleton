@@ -4,7 +4,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // Cookie names constants
@@ -51,7 +51,7 @@ func GetCookieConfig() CookieConfig {
 // =====================================================
 
 // SetOAuthStateCookie sets the OAuth state cookie (15 minutes expiration)
-func SetOAuthStateCookie(c *fiber.Ctx, state string) {
+func SetOAuthStateCookie(c fiber.Ctx, state string) {
 	cfg := GetCookieConfig()
 
 	c.Cookie(&fiber.Cookie{
@@ -67,12 +67,12 @@ func SetOAuthStateCookie(c *fiber.Ctx, state string) {
 }
 
 // GetOAuthStateCookie retrieves the OAuth state cookie
-func GetOAuthStateCookie(c *fiber.Ctx) string {
+func GetOAuthStateCookie(c fiber.Ctx) string {
 	return c.Cookies(CookieNameOAuthState)
 }
 
 // ClearOAuthStateCookie removes the OAuth state cookie
-func ClearOAuthStateCookie(c *fiber.Ctx) {
+func ClearOAuthStateCookie(c fiber.Ctx) {
 	cfg := GetCookieConfig()
 
 	c.Cookie(&fiber.Cookie{
@@ -92,7 +92,7 @@ func ClearOAuthStateCookie(c *fiber.Ctx) {
 // =====================================================
 
 // SetAuthTokenCookie sets the authentication token cookie (24 hours by default)
-func SetAuthTokenCookie(c *fiber.Ctx, token string, duration ...time.Duration) {
+func SetAuthTokenCookie(c fiber.Ctx, token string, duration ...time.Duration) {
 	cfg := GetCookieConfig()
 
 	// Default 24 hours if not specified
@@ -114,12 +114,12 @@ func SetAuthTokenCookie(c *fiber.Ctx, token string, duration ...time.Duration) {
 }
 
 // GetAuthTokenCookie retrieves the authentication token cookie
-func GetAuthTokenCookie(c *fiber.Ctx) string {
+func GetAuthTokenCookie(c fiber.Ctx) string {
 	return c.Cookies(CookieNameAuthToken)
 }
 
 // ClearAuthTokenCookie removes the authentication token cookie
-func ClearAuthTokenCookie(c *fiber.Ctx) {
+func ClearAuthTokenCookie(c fiber.Ctx) {
 	cfg := GetCookieConfig()
 
 	c.Cookie(&fiber.Cookie{
@@ -139,7 +139,7 @@ func ClearAuthTokenCookie(c *fiber.Ctx) {
 // =====================================================
 
 // SetRefreshTokenCookie sets the refresh token cookie (7 days by default)
-func SetRefreshTokenCookie(c *fiber.Ctx, token string, duration ...time.Duration) {
+func SetRefreshTokenCookie(c fiber.Ctx, token string, duration ...time.Duration) {
 	cfg := GetCookieConfig()
 
 	// Default 7 days if not specified
@@ -161,12 +161,12 @@ func SetRefreshTokenCookie(c *fiber.Ctx, token string, duration ...time.Duration
 }
 
 // GetRefreshTokenCookie retrieves the refresh token cookie
-func GetRefreshTokenCookie(c *fiber.Ctx) string {
+func GetRefreshTokenCookie(c fiber.Ctx) string {
 	return c.Cookies(CookieNameRefreshToken)
 }
 
 // ClearRefreshTokenCookie removes the refresh token cookie
-func ClearRefreshTokenCookie(c *fiber.Ctx) {
+func ClearRefreshTokenCookie(c fiber.Ctx) {
 	cfg := GetCookieConfig()
 
 	c.Cookie(&fiber.Cookie{
@@ -186,7 +186,7 @@ func ClearRefreshTokenCookie(c *fiber.Ctx) {
 // =====================================================
 
 // SetSessionCookie sets a session cookie with custom duration
-func SetSessionCookie(c *fiber.Ctx, sessionID string, duration time.Duration) {
+func SetSessionCookie(c fiber.Ctx, sessionID string, duration time.Duration) {
 	cfg := GetCookieConfig()
 
 	c.Cookie(&fiber.Cookie{
@@ -202,12 +202,12 @@ func SetSessionCookie(c *fiber.Ctx, sessionID string, duration time.Duration) {
 }
 
 // GetSessionCookie retrieves the session cookie
-func GetSessionCookie(c *fiber.Ctx) string {
+func GetSessionCookie(c fiber.Ctx) string {
 	return c.Cookies(CookieNameSessionToken)
 }
 
 // ClearSessionCookie removes the session cookie
-func ClearSessionCookie(c *fiber.Ctx) {
+func ClearSessionCookie(c fiber.Ctx) {
 	cfg := GetCookieConfig()
 
 	c.Cookie(&fiber.Cookie{
@@ -227,7 +227,7 @@ func ClearSessionCookie(c *fiber.Ctx) {
 // =====================================================
 
 // ClearAllAuthCookies removes all authentication related cookies
-func ClearAllAuthCookies(c *fiber.Ctx) {
+func ClearAllAuthCookies(c fiber.Ctx) {
 	ClearOAuthStateCookie(c)
 	ClearAuthTokenCookie(c)
 	ClearRefreshTokenCookie(c)
