@@ -9,11 +9,13 @@ import (
 type Repo interface {
 	Create(m model.User) error
 	FindByID(id string) (model.User, error)
+	FindByEmail(email string) (model.User, error)
 	FindAll(opts *helper.FindAllOptions) ([]model.User, int64, error)
 	Update(m model.User) error
 	Delete(id string) error
 
 	Exists(id string) error
+	ExistsByEmail(email string) error
 }
 
 type repo struct {
@@ -31,6 +33,12 @@ func (r *repo) Create(m model.User) error {
 func (r *repo) FindByID(id string) (model.User, error) {
 	var user model.User
 	err := r.db.First(&user, "id = ?", id).Error
+	return user, err
+}
+
+func (r *repo) FindByEmail(email string) (model.User, error) {
+	var user model.User
+	err := r.db.First(&user, "email = ?", email).Error
 	return user, err
 }
 
@@ -63,4 +71,8 @@ func (r *repo) Delete(id string) error {
 
 func (r *repo) Exists(id string) error {
 	return r.db.Select("id").First(&model.User{}, "id = ?", id).Error
+}
+
+func (r *repo) ExistsByEmail(email string) error {
+	return r.db.Select("email").First(&model.User{}, "email = ?", email).Error
 }

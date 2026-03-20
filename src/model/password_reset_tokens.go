@@ -21,5 +21,5 @@ type PasswordResetToken struct {
 }
 
 func (PasswordResetToken) TableName() string {
-	return "PasswordResetTokens"
+	return "passwordresettokens"
 }

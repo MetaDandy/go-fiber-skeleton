@@ -2,8 +2,9 @@ package src
 
 import (
 	"github.com/MetaDandy/go-fiber-skeleton/config"
+	authentication "github.com/MetaDandy/go-fiber-skeleton/src/core/auth"
 	"github.com/MetaDandy/go-fiber-skeleton/src/core/user"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 type Container struct {
@@ -17,11 +18,16 @@ func SetupContainer() *Container {
 	userService := user.NewService(userRepo)
 	userHandler := user.NewHandler(userService)
 
+	authRepo := authentication.NewRepo(config.DB)
+	authService := authentication.NewService(authRepo, userRepo)
+	authHandler := authentication.NewHandler(authService)
+
 	return &Container{
 		Handlers: []interface {
 			RegisterRoutes(fiber.Router)
 		}{
 			userHandler,
+			authHandler,
 		},
 	}
 }

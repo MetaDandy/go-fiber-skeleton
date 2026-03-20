@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/MetaDandy/go-fiber-skeleton/src/enum"
 	"golang.org/x/oauth2"
 )
 
@@ -21,11 +22,11 @@ type UserInfo struct {
 // GetUserInfo obtiene la información del usuario basado en el proveedor y token
 func GetUserInfo(ctx context.Context, provider string, token *oauth2.Token) (*UserInfo, error) {
 	switch provider {
-	case "google":
+	case enum.Google.String():
 		return getGoogleUserInfo(ctx, token)
-	case "github":
+	case enum.Github.String():
 		return getGitHubUserInfo(ctx, token)
-	case "discord":
+	case enum.Discord.String():
 		return getDiscordUserInfo(ctx, token)
 	default:
 		return nil, fmt.Errorf("provider '%s' not supported", provider)
@@ -34,7 +35,7 @@ func GetUserInfo(ctx context.Context, provider string, token *oauth2.Token) (*Us
 
 // getGoogleUserInfo obtiene datos del usuario de Google
 func getGoogleUserInfo(ctx context.Context, token *oauth2.Token) (*UserInfo, error) {
-	resp, err := fetchUserData(ctx, token, "https://www.googleapis.com/oauth2/v2/userinfo")
+	resp, err := fetchUserData(ctx, token, "https://www.googleapis.com/oauth2/v3/userinfo")
 	if err != nil {
 		return nil, err
 	}
