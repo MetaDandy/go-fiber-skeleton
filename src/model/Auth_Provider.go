@@ -21,5 +21,5 @@ type AuthProvider struct {
 }
 
 func (AuthProvider) TableName() string {
-	return "AuthProviders"
+	return "authproviders"
 }

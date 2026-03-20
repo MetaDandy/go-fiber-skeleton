@@ -26,5 +26,5 @@ type Role struct {
 }
 
 func (Role) TableName() string {
-	return "Roles"
+	return "roles"
 }

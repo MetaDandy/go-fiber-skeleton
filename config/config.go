@@ -34,6 +34,7 @@ func Load() {
 	}
 
 	runMigration := os.Getenv("RUN_MIGRATION") == "true"
+	runSeeder := os.Getenv("RUN_SEEDER") == "true"
 
 	maxRetries := 10
 	for i := range maxRetries {
@@ -49,7 +50,10 @@ func Load() {
 		DB, err = gorm.Open(postgres.Open(dns), &gorm.Config{})
 		if err == nil {
 			log.Printf("Database connected successfully after %d attempt(s)", i+1)
-			seed.Seeder(DB)
+			if runSeeder {
+				log.Printf("Running seeder...")
+				seed.Seeder(DB)
+			}
 			return
 		}
 

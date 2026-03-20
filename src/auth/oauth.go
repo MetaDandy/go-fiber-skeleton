@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/MetaDandy/go-fiber-skeleton/src/enum"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"
 	"golang.org/x/oauth2/google"
@@ -20,7 +21,7 @@ type Credentials struct {
 // getProviderConfig retorna la configuración OAuth2 según el proveedor
 func getProviderConfig(provider string, creds Credentials, redirectURL string) *oauth2.Config {
 	switch strings.ToLower(provider) {
-	case "google":
+	case enum.Google.String():
 		return &oauth2.Config{
 			ClientID:     creds.ClientID,
 			ClientSecret: creds.ClientSecret,
@@ -32,7 +33,7 @@ func getProviderConfig(provider string, creds Credentials, redirectURL string) *
 			Endpoint: google.Endpoint,
 		}
 
-	case "github":
+	case enum.Github.String():
 		return &oauth2.Config{
 			ClientID:     creds.ClientID,
 			ClientSecret: creds.ClientSecret,
@@ -43,7 +44,7 @@ func getProviderConfig(provider string, creds Credentials, redirectURL string) *
 			Endpoint: github.Endpoint,
 		}
 
-	case "discord":
+	case enum.Discord.String():
 		return &oauth2.Config{
 			ClientID:     creds.ClientID,
 			ClientSecret: creds.ClientSecret,

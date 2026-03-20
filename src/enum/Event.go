@@ -3,6 +3,7 @@ package enum
 type Event string
 
 const (
+	SignUpSuccess  Event = "signup_success"
 	LoginSuccess   Event = "login_success"
 	LoginFailed    Event = "login_failed"
 	PasswordReset  Event = "password_reset"

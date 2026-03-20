@@ -21,5 +21,5 @@ type EmailVerificationToken struct {
 }
 
 func (EmailVerificationToken) TableName() string {
-	return "EmailVerificationTokens"
+	return "emailverificationtokens"
 }
