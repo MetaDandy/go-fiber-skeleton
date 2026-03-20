@@ -1,13 +1,17 @@
 package seed
 
 import (
-	"log"
+	//"log"
 
 	"gorm.io/gorm"
 )
 
 func Seeder(db *gorm.DB) {
-	if err := Users(db); err != nil {
+
+	SeedPermissions(db)
+
+	/*if err := Users(db); err != nil {
 		log.Fatalf("Error al seedear usuarios: %v", err)
-	}
+	}*/
+
 }

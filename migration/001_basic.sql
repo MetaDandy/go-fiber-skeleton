@@ -13,7 +13,7 @@ CREATE TABLE Roles (
 );
 
 CREATE TABLE Permissions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id TEXT PRIMARY KEY,
     description TEXT,
     name TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -40,7 +40,7 @@ CREATE TABLE users (
 CREATE TABLE RolePermissions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     role_id UUID,
-    permission_id UUID,
+    permission_id TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP WITH TIME ZONE,
@@ -51,7 +51,7 @@ CREATE TABLE RolePermissions (
 CREATE TABLE RoleEffectivePermissions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     role_id UUID,
-    permission_id UUID,
+    permission_id TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP WITH TIME ZONE,
@@ -61,7 +61,7 @@ CREATE TABLE RoleEffectivePermissions (
 
 CREATE TABLE UserPermissions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    permission_id UUID,
+    permission_id TEXT,
     user_id UUID,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
