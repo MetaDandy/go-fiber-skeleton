@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MetaDandy/go-fiber-skeleton/api_error"
 	"github.com/MetaDandy/go-fiber-skeleton/helper"
 	"github.com/MetaDandy/go-fiber-skeleton/src/auth"
 	"github.com/MetaDandy/go-fiber-skeleton/src/enum"
@@ -60,12 +61,15 @@ func (h *handler) RegisterRoutes(router fiber.Router) {
 func (h *handler) Create(c fiber.Ctx) error {
 	input := new(Create)
 	if err := c.Bind().Body(&input); err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "Invalid input")
+		return api_error.BadRequest("Invalid input")
 	}
 
 	err := h.service.Create(*input)
 	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "Could not create user")
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		return api_error.InternalServerError("Could not create user").WithErr(err)
 	}
 
 	return c.SendStatus(fiber.StatusCreated)
@@ -75,9 +79,10 @@ func (h *handler) FindAll(c fiber.Ctx) error {
 	opts := helper.NewFindAllOptionsFromQuery(c)
 	finded, err := h.service.FindAll(opts)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		return api_error.InternalServerError("Could not retrieve users").WithErr(err)
 	}
 	return c.JSON(finded)
 }
@@ -86,9 +91,10 @@ func (h *handler) FindByID(c fiber.Ctx) error {
 	id := c.Params("id")
 	finded, err := h.service.FindByID(id)
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		return api_error.NotFound("User not found").WithErr(err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(finded)
@@ -98,18 +104,17 @@ func (h *handler) Update(c fiber.Ctx) error {
 	var input Update
 
 	if err := c.Bind().Body(&input); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "invalid request body",
-		})
+		return api_error.BadRequest("Invalid request body")
 	}
 
 	id := c.Params("id")
 
 	err := h.service.Update(id, input)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		return api_error.InternalServerError("Could not update user").WithErr(err)
 	}
 
 	return c.SendStatus(fiber.StatusOK)
@@ -119,9 +124,10 @@ func (h *handler) Delete(c fiber.Ctx) error {
 	id := c.Params("id")
 
 	if err := h.service.Delete(id); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		return api_error.InternalServerError("Could not delete user").WithErr(err)
 	}
 	return c.Status(fiber.StatusNoContent).Send(nil)
 }
@@ -140,17 +146,13 @@ func (h *handler) OAuthLogin(c fiber.Ctx) error {
 
 	// Validar proveedor
 	if !enum.IsValidAuthProvider(provider) {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "provider no soportado",
-		})
+		return api_error.BadRequest("Unsupported oauth provider")
 	}
 
 	// Cargar credenciales
 	creds, err := auth.LoadCredentials(provider)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return api_error.InternalServerError("Could not load provider credentials").WithErr(err)
 	}
 
 	// Generar estado para CSRF
@@ -172,9 +174,7 @@ func (h *handler) OAuthLogin(c fiber.Ctx) error {
 	// Obtener URL de autorización
 	authURL, err := auth.GetAuthURL(provider, creds, redirectURL, state)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return api_error.InternalServerError("Could not generate auth URL").WithErr(err)
 	}
 
 	fmt.Printf("🔐 [OAuth Login] Provider: %s\n", provider)
@@ -190,27 +190,21 @@ func (h *handler) OAuthCallback(c fiber.Ctx) error {
 	state := c.Query("state")
 
 	if code == "" || state == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "missing parameters: code or state",
-		})
+		return api_error.BadRequest("Missing required parameters: code or state")
 	}
 
 	// Obtener cookie con state:provider
 	cookieValue := c.Cookies("oauth_state")
 	if cookieValue == "" {
 		fmt.Printf("❌ [OAuth Callback] Cookie no encontrada\n\n")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "cookie not found",
-		})
+		return api_error.BadRequest("OAuth state cookie not found")
 	}
 
 	// Parse: state:provider de la cookie
 	parts := strings.Split(cookieValue, ":")
 	if len(parts) != 2 {
 		fmt.Printf("❌ [OAuth Callback] Cookie formato inválido\n\n")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "invalid cookie format",
-		})
+		return api_error.BadRequest("Invalid oauth state cookie format")
 	}
 
 	cookieState := parts[0]
@@ -221,9 +215,7 @@ func (h *handler) OAuthCallback(c fiber.Ctx) error {
 		fmt.Printf("❌ [OAuth Callback] CSRF validation failed\n")
 		fmt.Printf("   Expected: %s\n", cookieState)
 		fmt.Printf("   Got: %s\n\n", state)
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "invalid state",
-		})
+		return api_error.BadRequest("CSRF state validation failed")
 	}
 
 	fmt.Printf("✓ [OAuth Callback] State validado - Provider: %s\n", provider)
@@ -231,9 +223,7 @@ func (h *handler) OAuthCallback(c fiber.Ctx) error {
 	// Cargar credenciales
 	creds, err := auth.LoadCredentials(provider)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return api_error.InternalServerError("Could not load provider credentials").WithErr(err)
 	}
 
 	// Construir redirect URL
@@ -243,18 +233,14 @@ func (h *handler) OAuthCallback(c fiber.Ctx) error {
 	token, err := auth.ExchangeCode(provider, creds, redirectURL, code)
 	if err != nil {
 		fmt.Printf("❌ [OAuth Callback] Failed to exchange code: %v\n\n", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return api_error.InternalServerError("Failed to exchange authorization code").WithErr(err)
 	}
 
 	// Obtener información del usuario
 	userInfo, err := auth.GetUserInfo(context.Background(), provider, token)
 	if err != nil {
 		fmt.Printf("❌ [OAuth Callback] Failed to get user info: %v\n\n", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return api_error.InternalServerError("Failed to retrieve user information").WithErr(err)
 	}
 
 	// Mostrar información completa en consola

@@ -23,6 +23,9 @@ func main() {
 		AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization"},
 	}))
 
+	// Registrar error handler global ANTES de las rutas
+	app.Use(middleware.ErrorHandler)
+
 	c := src.SetupContainer()
 	api.SetupApi(app, c)
 

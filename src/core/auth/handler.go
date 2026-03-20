@@ -1,6 +1,9 @@
 package authentication
 
-import "github.com/gofiber/fiber/v3"
+import (
+	"github.com/MetaDandy/go-fiber-skeleton/api_error"
+	"github.com/gofiber/fiber/v3"
+)
 
 type Handler interface {
 	RegisterRoutes(router fiber.Router)
@@ -27,16 +30,17 @@ func (h *handler) RegisterRoutes(router fiber.Router) {
 func (h *handler) UserAuthProviders(c fiber.Ctx) error {
 	email := c.Params("email")
 	if email == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "email es requerido",
-		})
+		return api_error.BadRequest("Email parameter is required")
 	}
 
 	providers, err := h.service.UserAuthProviders(email)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "error al obtener proveedores de autenticación",
-		})
+		// Si el error es un *api_error.Error, retornarlo directamente
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		// Si es otro tipo de error, envolverlo
+		return api_error.InternalServerError("Could not retrieve authentication providers").WithErr(err)
 	}
 
 	return c.JSON(fiber.Map{
@@ -47,15 +51,20 @@ func (h *handler) UserAuthProviders(c fiber.Ctx) error {
 func (h *handler) SignUpPassword(c fiber.Ctx) error {
 	var input SignUpPassword
 	if err := c.Bind().Body(&input); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "invalid request body",
-		})
+		return api_error.BadRequest("Invalid request body")
 	}
 
+	if err := input.Validate(); err != nil {
+		return err
+	}
+
+	// Si el error es un *api_error.Error, retornarlo directamente
 	if err := h.service.SignUpPassword(input); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		// Si es otro tipo de error, envolverlo
+		return api_error.InternalServerError(err.Error()).WithErr(err)
 	}
 
 	return c.JSON(fiber.Map{
