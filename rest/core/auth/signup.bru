@@ -6,10 +6,21 @@ meta {
 
 post {
   url: {{url}}/auth/signup
-  body: none
+  body: json
   auth: inherit
+}
+
+body:json {
+  {
+    "email": "admin@gmail.com",
+    "password": "1234",
+    "repeat_password": "1234",
+    "ip": "0.0.0.0",
+    "user_agent": ""
+  }
 }
 
 settings {
   encodeUrl: true
+  timeout: 0
 }
