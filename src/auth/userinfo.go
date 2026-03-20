@@ -35,7 +35,7 @@ func GetUserInfo(ctx context.Context, provider string, token *oauth2.Token) (*Us
 
 // getGoogleUserInfo obtiene datos del usuario de Google
 func getGoogleUserInfo(ctx context.Context, token *oauth2.Token) (*UserInfo, error) {
-	resp, err := fetchUserData(ctx, token, "https://www.googleapis.com/oauth2/v2/userinfo")
+	resp, err := fetchUserData(ctx, token, "https://www.googleapis.com/oauth2/v3/userinfo")
 	if err != nil {
 		return nil, err
 	}

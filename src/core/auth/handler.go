@@ -1,11 +1,11 @@
 package authentication
 
-import "github.com/gofiber/fiber/v2"
+import "github.com/gofiber/fiber/v3"
 
 type Handler interface {
 	RegisterRoutes(router fiber.Router)
-	UserAuthProviders(c *fiber.Ctx) error
-	SignUpPassword(c *fiber.Ctx) error
+	UserAuthProviders(c fiber.Ctx) error
+	SignUpPassword(c fiber.Ctx) error
 }
 
 type handler struct {
@@ -24,7 +24,7 @@ func (h *handler) RegisterRoutes(router fiber.Router) {
 	auth.Post("/signup", h.SignUpPassword)
 }
 
-func (h *handler) UserAuthProviders(c *fiber.Ctx) error {
+func (h *handler) UserAuthProviders(c fiber.Ctx) error {
 	email := c.Params("email")
 	if email == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -44,9 +44,9 @@ func (h *handler) UserAuthProviders(c *fiber.Ctx) error {
 	})
 }
 
-func (h *handler) SignUpPassword(c *fiber.Ctx) error {
+func (h *handler) SignUpPassword(c fiber.Ctx) error {
 	var input SignUpPassword
-	if err := c.BodyParser(&input); err != nil {
+	if err := c.Bind().Body(&input); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "invalid request body",
 		})

@@ -10,18 +10,18 @@ import (
 	"github.com/MetaDandy/go-fiber-skeleton/helper"
 	"github.com/MetaDandy/go-fiber-skeleton/src/auth"
 	"github.com/MetaDandy/go-fiber-skeleton/src/enum"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 type Handler interface {
 	RegisterRoutes(router fiber.Router)
-	Create(c *fiber.Ctx) error
-	FindAll(c *fiber.Ctx) error
-	FindByID(c *fiber.Ctx) error
-	Update(c *fiber.Ctx) error
-	Delete(c *fiber.Ctx) error
-	OAuthLogin(c *fiber.Ctx) error
-	OAuthCallback(c *fiber.Ctx) error
+	Create(c fiber.Ctx) error
+	FindAll(c fiber.Ctx) error
+	FindByID(c fiber.Ctx) error
+	Update(c fiber.Ctx) error
+	Delete(c fiber.Ctx) error
+	OAuthLogin(c fiber.Ctx) error
+	OAuthCallback(c fiber.Ctx) error
 }
 
 type handler struct {
@@ -57,13 +57,13 @@ func (h *handler) RegisterRoutes(router fiber.Router) {
 	auth.Get("/callback", h.OAuthCallback)
 }
 
-func (h *handler) Create(c *fiber.Ctx) error {
-	var input Create
-	if err := c.BodyParser(&input); err != nil {
+func (h *handler) Create(c fiber.Ctx) error {
+	input := new(Create)
+	if err := c.Bind().Body(&input); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid input")
 	}
 
-	err := h.service.Create(input)
+	err := h.service.Create(*input)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Could not create user")
 	}
@@ -71,7 +71,7 @@ func (h *handler) Create(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusCreated)
 }
 
-func (h *handler) FindAll(c *fiber.Ctx) error {
+func (h *handler) FindAll(c fiber.Ctx) error {
 	opts := helper.NewFindAllOptionsFromQuery(c)
 	finded, err := h.service.FindAll(opts)
 	if err != nil {
@@ -82,7 +82,7 @@ func (h *handler) FindAll(c *fiber.Ctx) error {
 	return c.JSON(finded)
 }
 
-func (h *handler) FindByID(c *fiber.Ctx) error {
+func (h *handler) FindByID(c fiber.Ctx) error {
 	id := c.Params("id")
 	finded, err := h.service.FindByID(id)
 	if err != nil {
@@ -94,10 +94,10 @@ func (h *handler) FindByID(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(finded)
 }
 
-func (h *handler) Update(c *fiber.Ctx) error {
+func (h *handler) Update(c fiber.Ctx) error {
 	var input Update
 
-	if err := c.BodyParser(&input); err != nil {
+	if err := c.Bind().Body(&input); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "invalid request body",
 		})
@@ -115,7 +115,7 @@ func (h *handler) Update(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusOK)
 }
 
-func (h *handler) Delete(c *fiber.Ctx) error {
+func (h *handler) Delete(c fiber.Ctx) error {
 	id := c.Params("id")
 
 	if err := h.service.Delete(id); err != nil {
@@ -127,7 +127,7 @@ func (h *handler) Delete(c *fiber.Ctx) error {
 }
 
 // OAuthLogin inicia el flujo de login OAuth
-func (h *handler) OAuthLogin(c *fiber.Ctx) error {
+func (h *handler) OAuthLogin(c fiber.Ctx) error {
 	provider := c.Params("provider")
 
 	fmt.Printf("\n========================================\n")
@@ -181,11 +181,11 @@ func (h *handler) OAuthLogin(c *fiber.Ctx) error {
 	fmt.Printf("📍 Auth URL: %s\n", authURL)
 	fmt.Printf("🔒 State: %s\n\n", state)
 
-	return c.Redirect(authURL)
+	return c.Redirect().To(authURL)
 }
 
 // OAuthCallback maneja el callback de OAuth
-func (h *handler) OAuthCallback(c *fiber.Ctx) error {
+func (h *handler) OAuthCallback(c fiber.Ctx) error {
 	code := c.Query("code")
 	state := c.Query("state")
 

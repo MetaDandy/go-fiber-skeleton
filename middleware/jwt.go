@@ -6,12 +6,12 @@ import (
 	"os"
 	"strings"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/golang-jwt/jwt/v5"
 )
 
 func Jwt() fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		tokenString := c.Get("Authorization")
 		if tokenString == "" {
 			return c.Status(http.StatusUnauthorized).JSON(fiber.Map{

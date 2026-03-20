@@ -4,7 +4,7 @@ import (
 	"github.com/MetaDandy/go-fiber-skeleton/config"
 	authentication "github.com/MetaDandy/go-fiber-skeleton/src/core/auth"
 	"github.com/MetaDandy/go-fiber-skeleton/src/core/user"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 type Container struct {
