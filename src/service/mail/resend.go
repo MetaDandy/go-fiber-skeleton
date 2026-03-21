@@ -31,7 +31,7 @@ func NewResendService(config EmailConfig) (*ResendService, error) {
 
 // SendVerificationEmail envía email de verificación a través de Resend API
 func (r *ResendService) SendVerificationEmail(ctx context.Context, to, name, token string) error {
-	verifyLink := fmt.Sprintf("%s/auth/verify-email?token=%s", r.config.AppURL, token)
+	verifyLink := fmt.Sprintf("%s/auth/verify-email/%s", r.config.AppURL, token)
 
 	htmlBody := fmt.Sprintf(`
 <!DOCTYPE html>

@@ -36,7 +36,7 @@ func NewMailpitService(config EmailConfig) *MailpitService {
 
 // SendVerificationEmail envía email de verificación a través de Mailpit SMTP
 func (m *MailpitService) SendVerificationEmail(ctx context.Context, to, name, token string) error {
-	verifyLink := fmt.Sprintf("%s/auth/verify-email?token=%s", m.config.AppURL, token)
+	verifyLink := fmt.Sprintf("%s/auth/verify-email/%s", m.config.AppURL, token)
 
 	htmlBody := fmt.Sprintf(`
 <!DOCTYPE html>

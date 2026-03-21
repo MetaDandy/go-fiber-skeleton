@@ -26,7 +26,7 @@ CREATE TABLE users (
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
     email_verified BOOLEAN NOT NULL DEFAULT false,
-    email_verified_at TIMESTAMP WITH TIME ZONE,
+    email_verified_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     phone TEXT,
     password TEXT,
     picture TEXT,
@@ -96,7 +96,7 @@ CREATE TABLE AuthLogs (
 CREATE TABLE EmailVerificationTokens (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     token_hash TEXT,
-    used_at TIMESTAMP WITH TIME ZONE,
+    used_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     user_id UUID,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -107,7 +107,7 @@ CREATE TABLE EmailVerificationTokens (
 CREATE TABLE PasswordResetTokens (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     token_hash TEXT,
-    used_at TIMESTAMP WITH TIME ZONE,
+    used_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     user_id UUID,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

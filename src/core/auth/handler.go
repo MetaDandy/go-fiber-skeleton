@@ -10,6 +10,8 @@ type Handler interface {
 	UserAuthProviders(c fiber.Ctx) error
 	SignUpPassword(c fiber.Ctx) error
 	SendTestEmail(c fiber.Ctx) error
+	VerifyEmail(c fiber.Ctx) error
+	ResendVerificationEmail(c fiber.Ctx) error
 }
 
 type handler struct {
@@ -27,6 +29,8 @@ func (h *handler) RegisterRoutes(router fiber.Router) {
 	auth.Get("/providers/:email", h.UserAuthProviders)
 	auth.Post("/signup", h.SignUpPassword)
 	auth.Post("/send-test-email", h.SendTestEmail)
+	auth.Get("/verify-email/:token", h.VerifyEmail)
+	auth.Get("/resend-verification-email/:email", h.ResendVerificationEmail)
 }
 
 func (h *handler) UserAuthProviders(c fiber.Ctx) error {
@@ -98,5 +102,42 @@ func (h *handler) SendTestEmail(c fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"message": "test email sent successfully",
 		"email":   input.Email,
+	})
+}
+
+func (h *handler) VerifyEmail(c fiber.Ctx) error {
+	token := c.Params("token")
+	if token == "" {
+		return api_error.BadRequest("Token is required")
+	}
+
+	if err := h.service.VerifyEmail(token); err != nil {
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		return api_error.InternalServerError("Failed to verify email").WithErr(err)
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "email verified successfully",
+	})
+}
+
+func (h *handler) ResendVerificationEmail(c fiber.Ctx) error {
+	email := c.Params("email")
+
+	if email == "" {
+		return api_error.BadRequest("Email is required")
+	}
+
+	if err := h.service.ResendVerificationEmail(email); err != nil {
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		return api_error.InternalServerError("Failed to resend verification email").WithErr(err)
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "verification email resent successfully",
 	})
 }
