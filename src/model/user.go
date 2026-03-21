@@ -12,7 +12,7 @@ type User struct {
 	Name            string
 	Email           string `gorm:"uniqueIndex"`
 	EmailVerified   bool
-	EmailVerifiedAt time.Time
+	EmailVerifiedAt *time.Time
 	Phone           string
 	Password        string
 	Picture         string

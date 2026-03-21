@@ -1,0 +1,20 @@
+meta {
+  name: verify email
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{url}}/auth/verify-email/:token
+  body: none
+  auth: inherit
+}
+
+params:path {
+  token: 2a3a95657049b5bbfbfc686038131a89aee0bd233d133bd6396f37317e75daed
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
