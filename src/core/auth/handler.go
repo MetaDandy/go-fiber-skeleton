@@ -9,6 +9,7 @@ type Handler interface {
 	RegisterRoutes(router fiber.Router)
 	UserAuthProviders(c fiber.Ctx) error
 	SignUpPassword(c fiber.Ctx) error
+	SendTestEmail(c fiber.Ctx) error
 }
 
 type handler struct {
@@ -25,6 +26,7 @@ func (h *handler) RegisterRoutes(router fiber.Router) {
 	auth := router.Group("/auth")
 	auth.Get("/providers/:email", h.UserAuthProviders)
 	auth.Post("/signup", h.SignUpPassword)
+	auth.Post("/send-test-email", h.SendTestEmail)
 }
 
 func (h *handler) UserAuthProviders(c fiber.Ctx) error {
@@ -69,5 +71,32 @@ func (h *handler) SignUpPassword(c fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"message": "user created successfully",
+	})
+}
+
+func (h *handler) SendTestEmail(c fiber.Ctx) error {
+	var input struct {
+		Email string `json:"email"`
+		Name  string `json:"name"`
+	}
+
+	if err := c.Bind().Body(&input); err != nil {
+		return api_error.BadRequest("Invalid request body")
+	}
+
+	if input.Email == "" {
+		return api_error.BadRequest("Email is required")
+	}
+
+	if err := h.service.SendTestEmail(input.Email, input.Name); err != nil {
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		return api_error.InternalServerError("Failed to send test email").WithErr(err)
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "test email sent successfully",
+		"email":   input.Email,
 	})
 }
