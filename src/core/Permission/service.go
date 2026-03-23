@@ -8,6 +8,7 @@ import (
 type Service interface {
 	FindByID(id string) (*response.Permission, error)
 	FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.Permission], error)
+	AllExists(ids []string) error
 }
 
 type service struct {
@@ -43,4 +44,8 @@ func (s *service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[resp
 		Offset: opts.Offset,
 		Pages:  pages,
 	}, nil
+}
+
+func (s *service) AllExists(ids []string) error {
+	return s.repo.AllExists(ids)
 }

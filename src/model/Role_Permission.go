@@ -13,7 +13,7 @@ type RolePermission struct {
 	RoleID uuid.UUID `gorm:"type:uuid;"`
 	Role   Role      `gorm:"foreignKey:RoleID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 
-	PermissionID uuid.UUID  `gorm:"type:uuid;"`
+	PermissionID string     `gorm:"type:varchar(255);"`
 	Permission   Permission `gorm:"foreignKey:PermissionID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 
 	CreatedAt time.Time
