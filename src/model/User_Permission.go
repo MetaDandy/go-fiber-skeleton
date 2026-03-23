@@ -10,7 +10,7 @@ import (
 type UserPermission struct {
 	ID uuid.UUID `gorm:"type:uuid;primaryKey;"`
 
-	PermissionID uuid.UUID  `gorm:"type:uuid;"`
+	PermissionID string     `gorm:"type:varchar(255);"`
 	Permission   Permission `gorm:"foreignKey:PermissionID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 
 	UserID uuid.UUID `gorm:"type:uuid;"`
