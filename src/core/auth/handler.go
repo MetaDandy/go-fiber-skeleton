@@ -3,6 +3,7 @@ package authentication
 import (
 	"github.com/MetaDandy/go-fiber-skeleton/api_error"
 	"github.com/gofiber/fiber/v3"
+	"github.com/google/uuid"
 )
 
 type Handler interface {
@@ -12,6 +13,9 @@ type Handler interface {
 	SendTestEmail(c fiber.Ctx) error
 	VerifyEmail(c fiber.Ctx) error
 	ResendVerificationEmail(c fiber.Ctx) error
+	ForgotPassword(c fiber.Ctx) error
+	ResetPassword(c fiber.Ctx) error
+	ChangePassword(c fiber.Ctx) error
 }
 
 type handler struct {
@@ -31,6 +35,9 @@ func (h *handler) RegisterRoutes(router fiber.Router) {
 	auth.Post("/send-test-email", h.SendTestEmail)
 	auth.Get("/verify-email/:token", h.VerifyEmail)
 	auth.Get("/resend-verification-email/:email", h.ResendVerificationEmail)
+	auth.Post("/forgot-password", h.ForgotPassword)
+	auth.Post("/reset-password", h.ResetPassword)
+	auth.Post("/change-password/:userID", h.ChangePassword) // Requiere JWT middleware
 }
 
 func (h *handler) UserAuthProviders(c fiber.Ctx) error {
@@ -139,5 +146,112 @@ func (h *handler) ResendVerificationEmail(c fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"message": "verification email resent successfully",
+	})
+}
+
+func (h *handler) ForgotPassword(c fiber.Ctx) error {
+	var input ForgotPassword
+	if err := c.Bind().Body(&input); err != nil {
+		return api_error.BadRequest("Invalid request body: " + err.Error()).WithErr(err)
+	}
+
+	// Extraer IP del contexto/header
+	input.Ip = c.IP()
+	if input.Ip == "" {
+		input.Ip = c.Get("X-Forwarded-For")
+	}
+
+	if err := input.Validate(); err != nil {
+		return api_error.BadRequest("Invalid request body: " + err.Error()).WithErr(err)
+	}
+
+	if err := h.service.ForgotPassword(input); err != nil {
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		return api_error.InternalServerError("Could not process forgot password request").WithErr(err)
+	}
+
+	// Retornar mensaje genérico por seguridad (no revelar si el email existe)
+	return c.JSON(fiber.Map{
+		"message": "If an account exists with that email, you will receive password reset instructions",
+	})
+}
+
+func (h *handler) ResetPassword(c fiber.Ctx) error {
+	var input ResetPassword
+	if err := c.Bind().Body(&input); err != nil {
+		return api_error.BadRequest("Invalid request body: " + err.Error()).WithErr(err)
+	}
+
+	// Extraer IP y User-Agent del contexto
+	input.Ip = c.IP()
+	if input.Ip == "" {
+		input.Ip = c.Get("X-Forwarded-For")
+	}
+	input.UserAgent = c.Get("User-Agent")
+
+	if err := input.Validate(); err != nil {
+		return api_error.BadRequest("Invalid request body: " + err.Error()).WithErr(err)
+	}
+
+	if err := h.service.ResetPassword(input); err != nil {
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		return api_error.InternalServerError("Could not reset password").WithErr(err)
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "password reset successfully",
+	})
+}
+
+func (h *handler) ChangePassword(c fiber.Ctx) error {
+	var input ChangePassword
+	if err := c.Bind().Body(&input); err != nil {
+		return api_error.BadRequest("Invalid request body: " + err.Error()).WithErr(err)
+	}
+
+	if err := input.Validate(); err != nil {
+		return err
+	}
+
+	// TODO: Implementar JWT middleware completo
+	// Por ahora, recibir user_id por query parameter o header para testing
+	// Cuando el middleware JWT esté listo, descomentar:
+	// userID, ok := c.Locals("user_id").(string)
+	// if !ok || userID == "" {
+	//     return api_error.Unauthorized("User not authenticated")
+	// }
+
+	// Recibir user_id temporalmente por header o query
+	userID := c.Params("userID")
+	if userID == "" {
+		return api_error.BadRequest("user_id is required (X-User-ID header or user_id query parameter)")
+	}
+
+	// Validar que sea un UUID válido
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return api_error.BadRequest("Invalid user ID format")
+	}
+
+	// Extraer IP y User-Agent
+	ip := c.IP()
+	if ip == "" {
+		ip = c.Get("X-Forwarded-For")
+	}
+	userAgent := c.Get("User-Agent")
+
+	if err := h.service.ChangePassword(uid, input, ip, userAgent); err != nil {
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		return api_error.InternalServerError("Could not change password").WithErr(err)
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "password changed successfully",
 	})
 }
