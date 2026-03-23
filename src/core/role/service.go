@@ -58,6 +58,7 @@ func (s *service) Create(input Create) error {
 	rolePermissions := make([]model.RolePermission, 0, len(input.Permissions))
 	for _, permissionID := range input.Permissions {
 		rolePermissions = append(rolePermissions, model.RolePermission{
+			ID:           uuid.New(),
 			RoleID:       roleID,
 			PermissionID: permissionID,
 		})

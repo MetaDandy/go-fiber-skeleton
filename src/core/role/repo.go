@@ -40,7 +40,7 @@ func (r *repo) Create(m model.Role, rp []model.RolePermission) error {
 
 func (r *repo) FindByID(id string) (model.Role, error) {
 	var role model.Role
-	err := r.db.First(&role, "id = ?", id).Error
+	err := r.db.Preload("Role_permissions").First(&role, "id = ?", id).Error
 	return role, err
 }
 
