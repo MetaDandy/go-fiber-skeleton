@@ -1,0 +1,23 @@
+meta {
+  name: test mail
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{url}}/auth/send-test-email
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "email": "test@example.com", 
+    "name": "Test"
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

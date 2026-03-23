@@ -8,6 +8,7 @@ import (
 
 func Seeder(db *gorm.DB) {
 
+	SeedRoles(db)
 	SeedPermissions(db)
 
 	/*if err := Users(db); err != nil {

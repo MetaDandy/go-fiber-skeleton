@@ -9,8 +9,8 @@ import (
 
 	"github.com/MetaDandy/go-fiber-skeleton/api_error"
 	"github.com/MetaDandy/go-fiber-skeleton/helper"
-	"github.com/MetaDandy/go-fiber-skeleton/src/auth"
 	"github.com/MetaDandy/go-fiber-skeleton/src/enum"
+	"github.com/MetaDandy/go-fiber-skeleton/src/service/auth"
 	"github.com/gofiber/fiber/v3"
 )
 

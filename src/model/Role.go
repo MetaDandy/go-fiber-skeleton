@@ -13,7 +13,7 @@ type Role struct {
 	Description string
 
 	RoleID *uuid.UUID `gorm:"type:uuid;"`
-	Role   *Role     `gorm:"foreignKey:RoleID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
+	Role   *Role      `gorm:"foreignKey:RoleID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 
 	Role_permissions           []RolePermission          `gorm:"foreignKey:RoleID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 	Role_effective_permissions []RoleEffectivePermission `gorm:"foreignKey:RoleID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
