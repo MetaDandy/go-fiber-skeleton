@@ -81,3 +81,20 @@ func (c ChangePassword) Validate() error {
 	}
 	return nil
 }
+
+type LoginPassword struct {
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required"`
+	Ip       string `json:"ip"`
+	UserAgent string `json:"user_agent"`
+}
+
+func (l LoginPassword) Validate() error {
+	if l.Email == "" {
+		return api_error.BadRequest("email is required")
+	}
+	if l.Password == "" {
+		return api_error.BadRequest("password is required")
+	}
+	return nil
+}

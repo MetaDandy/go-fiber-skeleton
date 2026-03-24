@@ -2,6 +2,7 @@ package authentication
 
 import (
 	"github.com/MetaDandy/go-fiber-skeleton/api_error"
+	"github.com/MetaDandy/go-fiber-skeleton/src/service/cookie"
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 )
@@ -10,6 +11,7 @@ type Handler interface {
 	RegisterRoutes(router fiber.Router)
 	UserAuthProviders(c fiber.Ctx) error
 	SignUpPassword(c fiber.Ctx) error
+	LoginPassword(c fiber.Ctx) error
 	SendTestEmail(c fiber.Ctx) error
 	VerifyEmail(c fiber.Ctx) error
 	ResendVerificationEmail(c fiber.Ctx) error
@@ -32,6 +34,7 @@ func (h *handler) RegisterRoutes(router fiber.Router) {
 	auth := router.Group("/auth")
 	auth.Get("/providers/:email", h.UserAuthProviders)
 	auth.Post("/signup", h.SignUpPassword)
+	auth.Post("/signin", h.LoginPassword)
 	auth.Post("/send-test-email", h.SendTestEmail)
 	auth.Get("/verify-email/:token", h.VerifyEmail)
 	auth.Get("/resend-verification-email/:email", h.ResendVerificationEmail)
@@ -82,6 +85,41 @@ func (h *handler) SignUpPassword(c fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"message": "user created successfully",
+	})
+}
+
+func (h *handler) LoginPassword(c fiber.Ctx) error {
+	var input LoginPassword
+	if err := c.Bind().Body(&input); err != nil {
+		return api_error.BadRequest("Invalid request body")
+	}
+
+	// Extraer IP del contexto/header
+	input.Ip = c.IP()
+	if input.Ip == "" {
+		input.Ip = c.Get("X-Forwarded-For")
+	}
+
+	// Extraer User-Agent
+	input.UserAgent = c.Get("User-Agent")
+
+	if err := input.Validate(); err != nil {
+		return err
+	}
+
+	token, err := h.service.LoginPassword(input)
+	if err != nil {
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		return api_error.InternalServerError("LoginPassword failed").WithErr(err)
+	}
+
+	// Setear cookie con el token (HTTPOnly, secure, samesite)
+	cookie.SetAuthTokenCookie(c, token)
+
+	return c.JSON(fiber.Map{
+		"message": "login successful",
 	})
 }
 

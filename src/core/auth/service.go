@@ -9,6 +9,7 @@ import (
 
 	"github.com/MetaDandy/go-fiber-skeleton/api_error"
 	"github.com/MetaDandy/go-fiber-skeleton/constant"
+	"github.com/MetaDandy/go-fiber-skeleton/helper"
 	"github.com/MetaDandy/go-fiber-skeleton/src/enum"
 	"github.com/MetaDandy/go-fiber-skeleton/src/model"
 	"github.com/MetaDandy/go-fiber-skeleton/src/service/mail"
@@ -19,6 +20,7 @@ import (
 type Service interface {
 	UserAuthProviders(email string) ([]string, error)
 	SignUpPassword(input SignUpPassword) error
+	LoginPassword(input LoginPassword) (string, error)
 	SendTestEmail(email, name string) error
 	VerifyEmail(token string) error
 	ResendVerificationEmail(email string) error
@@ -386,4 +388,78 @@ func (s *service) ChangePassword(userID uuid.UUID, input ChangePassword, ip stri
 	}
 
 	return nil
+}
+
+// LoginPassword autentica un usuario con email y contraseña
+// Retorna JWT token si es exitoso
+func (s *service) LoginPassword(input LoginPassword) (string, error) {
+	// Buscar el usuario por email
+	user, err := s.uRepo.FindByEmail(input.Email)
+	if err != nil {
+		// Log fallido (pero respuesta genérica por seguridad)
+		al := model.AuthLog{
+			ID:        uuid.New(),
+			Event:     enum.LoginFailed,
+			Ip:        input.Ip,
+			UserAgent: input.UserAgent,
+		}
+		s.repo.CreateAuthLog(al)
+		return "", api_error.Unauthorized("Invalid email or password")
+	}
+
+	// Validar que el usuario tiene contraseña (no es solo OAuth)
+	if user.Password == "" {
+		return "", api_error.Unauthorized("Invalid email or password")
+	}
+
+	// Comparar contraseña con el hash guardado
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
+		// Log fallido
+		al := model.AuthLog{
+			ID:        uuid.New(),
+			Event:     enum.LoginFailed,
+			UserID:    user.ID,
+			Ip:        input.Ip,
+			UserAgent: input.UserAgent,
+		}
+		s.repo.CreateAuthLog(al)
+		return "", api_error.Unauthorized("Invalid email or password")
+	}
+
+	// Validar que el email está verificado
+	if !user.EmailVerified {
+		// Log intento sin email verificado
+		al := model.AuthLog{
+			ID:        uuid.New(),
+			Event:     enum.EmailNotVerified,
+			UserID:    user.ID,
+			Ip:        input.Ip,
+			UserAgent: input.UserAgent,
+		}
+		s.repo.CreateAuthLog(al)
+		return "", api_error.Forbidden("Please verify your email before logging in")
+	}
+
+	// Generar JWT token
+	token, err := helper.GenerateJwt(user.ID.String(), user.Email, user.RoleID.String())
+	if err != nil {
+		log.Printf("failed to generate JWT token: %v", err)
+		return "", api_error.InternalServerError("Failed to generate authentication token").WithErr(err)
+	}
+
+	// Crear auth log exitoso
+	al := model.AuthLog{
+		ID:        uuid.New(),
+		Event:     enum.LoginSuccess,
+		UserID:    user.ID,
+		Ip:        input.Ip,
+		UserAgent: input.UserAgent,
+	}
+
+	if err := s.repo.CreateAuthLog(al); err != nil {
+		log.Printf("failed to create auth log for login: %v", err)
+		// No fallar el login si falla el log
+	}
+
+	return token, nil
 }

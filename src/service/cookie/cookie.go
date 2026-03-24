@@ -1,4 +1,4 @@
-package helper
+package cookie
 
 import (
 	"os"
