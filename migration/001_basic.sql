@@ -140,11 +140,38 @@ CREATE TABLE UserRoles (
 
 
 -- Indexes
-CREATE INDEX idx_users_deleted_at ON users(deleted_at);
+-- Indexes for users table
 CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_deleted_at ON users(deleted_at);
+CREATE INDEX idx_users_email_verified ON users(email_verified);
+
+-- Indexes for authentication lookup (critical for token verification)
+CREATE INDEX idx_email_verification_tokens_token_hash ON EmailVerificationTokens(token_hash);
+CREATE INDEX idx_email_verification_tokens_user_id ON EmailVerificationTokens(user_id);
+CREATE INDEX idx_email_verification_tokens_created_at ON EmailVerificationTokens(created_at DESC);
+CREATE INDEX idx_password_reset_tokens_token_hash ON PasswordResetTokens(token_hash);
+CREATE INDEX idx_password_reset_tokens_user_id ON PasswordResetTokens(user_id);
+CREATE INDEX idx_password_reset_tokens_created_at ON PasswordResetTokens(created_at DESC);
+
+-- Indexes for audit logs (frequent inserts and searches)
+CREATE INDEX idx_auth_logs_user_id ON AuthLogs(user_id);
+CREATE INDEX idx_auth_logs_created_at ON AuthLogs(created_at DESC);
+CREATE INDEX idx_auth_logs_event ON AuthLogs(event);
+CREATE INDEX idx_auth_logs_user_id_created_at ON AuthLogs(user_id, created_at DESC);
+CREATE INDEX idx_auth_logs_ip ON AuthLogs(ip);
+
+-- Indexes for relationships and constraints
 CREATE INDEX idx_roles_deleted_at ON Roles(deleted_at);
 CREATE INDEX idx_permissions_deleted_at ON Permissions(deleted_at);
+CREATE INDEX idx_auth_providers_user_id ON AuthProviders(user_id);
+CREATE INDEX idx_auth_providers_provider ON AuthProviders(provider);
+CREATE INDEX idx_user_permissions_user_id ON UserPermissions(user_id);
+CREATE INDEX idx_user_permissions_permission_id ON UserPermissions(permission_id);
+CREATE INDEX idx_role_permissions_role_id ON RolePermissions(role_id);
+CREATE INDEX idx_role_permissions_permission_id ON RolePermissions(permission_id);
 CREATE INDEX idx_sessions_deleted_at ON sessions(deleted_at);
+CREATE INDEX idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX idx_sessions_created_at ON sessions(created_at DESC);
 
 -- +goose Down
 DROP TABLE IF EXISTS UserRoles;

@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/MetaDandy/go-fiber-skeleton/api_error"
 	"github.com/MetaDandy/go-fiber-skeleton/constant"
+	"github.com/MetaDandy/go-fiber-skeleton/helper"
 	"github.com/MetaDandy/go-fiber-skeleton/src/enum"
 	"github.com/MetaDandy/go-fiber-skeleton/src/model"
 	"github.com/MetaDandy/go-fiber-skeleton/src/service/mail"
@@ -18,14 +20,20 @@ import (
 type Service interface {
 	UserAuthProviders(email string) ([]string, error)
 	SignUpPassword(input SignUpPassword) error
+	LoginPassword(input LoginPassword) (string, error)
 	SendTestEmail(email, name string) error
 	VerifyEmail(token string) error
 	ResendVerificationEmail(email string) error
+	ForgotPassword(input ForgotPassword) error
+	ResetPassword(input ResetPassword) error
+	ChangePassword(userID uuid.UUID, input ChangePassword, ip string, userAgent string) error
 }
 
 type uRepo interface {
 	FindByEmail(email string) (model.User, error)
 	ExistsByEmail(email string) error
+	FindByID(id string) (model.User, error)
+	UpdatePassword(userID string, passwordHash string) error
 }
 
 type service struct {
@@ -227,4 +235,231 @@ func (s *service) ResendVerificationEmail(email string) error {
 	}
 
 	return nil
+}
+
+// ForgotPassword genera un token de reset y lo envía por mail
+func (s *service) ForgotPassword(input ForgotPassword) error {
+	// Buscar el usuario
+	user, err := s.uRepo.FindByEmail(input.Email)
+	if err != nil {
+		// No revelar si el email existe por seguridad
+		return api_error.InternalServerError("Error")
+	}
+
+	// Generar token
+	token, err := mail.GeneratePasswordResetToken()
+	if err != nil {
+		log.Printf("failed to generate password reset token: %v", err)
+		return api_error.InternalServerError("Error")
+	}
+
+	// Construir estructuras para guardar
+	tokenHash := mail.HashToken(token)
+	prt := model.PasswordResetToken{
+		ID:        uuid.New(),
+		TokenHash: tokenHash,
+		UserID:    user.ID,
+	}
+
+	al := model.AuthLog{
+		ID:     uuid.New(),
+		Event:  enum.PasswordReset,
+		UserID: user.ID,
+		Ip:     input.Ip,
+	}
+
+	// EL REPO MANEJA LA TRANSACCIÓN: guarda token + log + invalida tokens anteriores
+	if err := s.repo.SavePasswordResetTokenWithLog(prt, al); err != nil {
+		log.Printf("failed to save password reset token and log: %v", err)
+		return api_error.InternalServerError("Error")
+	}
+
+	// Construir el link de reset
+	// El token sin hash se envía en el email, el usuario lo usará en reset-password
+	appURL := os.Getenv("APP_URL")
+	if appURL == "" {
+		appURL = "http://localhost:3000"
+	}
+	resetLink := fmt.Sprintf("%s/reset-password/%s", appURL, token)
+
+	// Enviar email con el link
+	ctx := context.Background()
+	if err := s.mailService.SendPasswordReset(ctx, user.Email, user.Name, resetLink); err != nil {
+		log.Printf("failed to send password reset email to %s: %v", user.Email, err)
+		return api_error.InternalServerError("Error")
+	}
+
+	return nil
+}
+
+// ResetPassword cambia la contraseña usando un token válido
+// Se llama cuando el usuario hace click en el link del email
+func (s *service) ResetPassword(input ResetPassword) error {
+	tokenHash := mail.HashToken(input.Token)
+
+	// Buscar el token en BD
+	prt, err := s.repo.GetPasswordResetTokenByHash(tokenHash)
+	if err != nil {
+		return api_error.Unauthorized("Invalid or expired password reset token")
+	}
+
+	// Validar expiración (1 hora)
+	if time.Since(prt.CreatedAt) > 1*time.Hour {
+		return api_error.Unauthorized("Password reset token has expired")
+	}
+
+	// Hash la nueva contraseña
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(input.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		log.Printf("failed to hash password: %v", err)
+		return api_error.InternalServerError("Could not process password reset")
+	}
+
+	// Construir auth log
+	al := model.AuthLog{
+		ID:        uuid.New(),
+		Event:     enum.PasswordResetSuccess,
+		UserID:    prt.UserID,
+		Ip:        input.Ip,
+		UserAgent: input.UserAgent,
+	}
+
+	// EL REPO MANEJA LA TRANSACCIÓN: actualizar contraseña en user + invalidar token + guardar log
+	userIDStr := prt.UserID.String()
+	if err := s.repo.CompletePasswordReset(userIDStr, string(passwordHash), al); err != nil {
+		log.Printf("failed to complete password reset: %v", err)
+		return api_error.InternalServerError("Could not reset password")
+	}
+
+	return nil
+}
+
+// ChangePassword cambia la contraseña del usuario autenticado
+// Se llama cuando el usuario pide cambiar su contraseña (no olvido)
+func (s *service) ChangePassword(userID uuid.UUID, input ChangePassword, ip string, userAgent string) error {
+	// Obtener el usuario (por user repo)
+	userIDStr := userID.String()
+	user, err := s.uRepo.FindByID(userIDStr)
+	if err != nil {
+		return api_error.Unauthorized("User not found")
+	}
+
+	// Validar que la contraseña actual sea correcta
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.CurrentPassword)); err != nil {
+		// Registrar intento fallido en auth logs
+		al := model.AuthLog{
+			ID:        uuid.New(),
+			Event:     enum.PasswordChangeFailure,
+			UserID:    userID,
+			Ip:        ip,
+			UserAgent: userAgent,
+		}
+		s.repo.CreateAuthLog(al)
+
+		return api_error.Unauthorized("Current password is incorrect")
+	}
+
+	// Hash la nueva contraseña
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(input.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		log.Printf("failed to hash password: %v", err)
+		return api_error.InternalServerError("Could not process password change")
+	}
+
+	// Construir auth log exitoso
+	al := model.AuthLog{
+		ID:        uuid.New(),
+		Event:     enum.PasswordChangeSuccess,
+		UserID:    userID,
+		Ip:        ip,
+		UserAgent: userAgent,
+	}
+
+	// EL USER REPO MANEJA: actualizar contraseña + guardar log con transacción
+	if err := s.uRepo.UpdatePassword(userIDStr, string(passwordHash)); err != nil {
+		log.Printf("failed to update user password: %v", err)
+		return api_error.InternalServerError("Could not change password")
+	}
+
+	// Guardar log de cambio exitoso (en auth repo - es log)
+	if err := s.repo.CreateAuthLog(al); err != nil {
+		log.Printf("failed to create auth log: %v", err)
+		// Si falla el log, no rollback el cambio de contraseña (es crítico el cambio)
+	}
+
+	return nil
+}
+
+// LoginPassword autentica un usuario con email y contraseña
+// Retorna JWT token si es exitoso
+func (s *service) LoginPassword(input LoginPassword) (string, error) {
+	// Buscar el usuario por email
+	user, err := s.uRepo.FindByEmail(input.Email)
+	if err != nil {
+		// Log fallido (pero respuesta genérica por seguridad)
+		al := model.AuthLog{
+			ID:        uuid.New(),
+			Event:     enum.LoginFailed,
+			Ip:        input.Ip,
+			UserAgent: input.UserAgent,
+		}
+		s.repo.CreateAuthLog(al)
+		return "", api_error.Unauthorized("Invalid email or password")
+	}
+
+	// Validar que el usuario tiene contraseña (no es solo OAuth)
+	if user.Password == "" {
+		return "", api_error.Unauthorized("Invalid email or password")
+	}
+
+	// Comparar contraseña con el hash guardado
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
+		// Log fallido
+		al := model.AuthLog{
+			ID:        uuid.New(),
+			Event:     enum.LoginFailed,
+			UserID:    user.ID,
+			Ip:        input.Ip,
+			UserAgent: input.UserAgent,
+		}
+		s.repo.CreateAuthLog(al)
+		return "", api_error.Unauthorized("Invalid email or password")
+	}
+
+	// Validar que el email está verificado
+	if !user.EmailVerified {
+		// Log intento sin email verificado
+		al := model.AuthLog{
+			ID:        uuid.New(),
+			Event:     enum.EmailNotVerified,
+			UserID:    user.ID,
+			Ip:        input.Ip,
+			UserAgent: input.UserAgent,
+		}
+		s.repo.CreateAuthLog(al)
+		return "", api_error.Forbidden("Please verify your email before logging in")
+	}
+
+	// Generar JWT token
+	token, err := helper.GenerateJwt(user.ID.String(), user.Email, user.RoleID.String())
+	if err != nil {
+		log.Printf("failed to generate JWT token: %v", err)
+		return "", api_error.InternalServerError("Failed to generate authentication token").WithErr(err)
+	}
+
+	// Crear auth log exitoso
+	al := model.AuthLog{
+		ID:        uuid.New(),
+		Event:     enum.LoginSuccess,
+		UserID:    user.ID,
+		Ip:        input.Ip,
+		UserAgent: input.UserAgent,
+	}
+
+	if err := s.repo.CreateAuthLog(al); err != nil {
+		log.Printf("failed to create auth log for login: %v", err)
+		// No fallar el login si falla el log
+	}
+
+	return token, nil
 }

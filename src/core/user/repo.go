@@ -16,6 +16,7 @@ type Repo interface {
 
 	Exists(id string) error
 	ExistsByEmail(email string) error
+	UpdatePassword(id string, passwordHash string) error
 }
 
 type repo struct {
@@ -75,4 +76,8 @@ func (r *repo) Exists(id string) error {
 
 func (r *repo) ExistsByEmail(email string) error {
 	return r.db.Select("email").First(&model.User{}, "email = ?", email).Error
+}
+
+func (r *repo) UpdatePassword(id string, passwordHash string) error {
+	return r.db.Model(&model.User{}).Where("id = ?", id).Update("password", passwordHash).Error
 }
