@@ -15,6 +15,7 @@ import (
 	"github.com/MetaDandy/go-fiber-skeleton/src/service/mail"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 type Service interface {
@@ -27,6 +28,7 @@ type Service interface {
 	ForgotPassword(input ForgotPassword) error
 	ResetPassword(input ResetPassword) error
 	ChangePassword(userID uuid.UUID, input ChangePassword, ip string, userAgent string) error
+	OAuthCreateOrLogin(input OAuthCallbackInternal) (string, error)
 }
 
 type uRepo interface {
@@ -57,7 +59,7 @@ func (s *service) UserAuthProviders(email string) ([]string, error) {
 	}
 
 	providers := s.repo.UserAuthProviders(user.ID.String())
-	if user.Password != "" {
+	if user.Password != nil {
 		providers = append(providers, "password")
 	}
 
@@ -74,10 +76,12 @@ func (s *service) SignUpPassword(input SignUpPassword) error {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
 
+	hashed := string(hash)
+
 	u := model.User{
 		ID:            uuid.New(),
 		Email:         input.Email,
-		Password:      string(hash),
+		Password:      &hashed,
 		EmailVerified: false,
 		RoleID:        constant.GenericID,
 	}
@@ -345,7 +349,7 @@ func (s *service) ChangePassword(userID uuid.UUID, input ChangePassword, ip stri
 	}
 
 	// Validar que la contraseña actual sea correcta
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.CurrentPassword)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(*user.Password), []byte(input.CurrentPassword)); err != nil {
 		// Registrar intento fallido en auth logs
 		al := model.AuthLog{
 			ID:        uuid.New(),
@@ -408,12 +412,12 @@ func (s *service) LoginPassword(input LoginPassword) (string, error) {
 	}
 
 	// Validar que el usuario tiene contraseña (no es solo OAuth)
-	if user.Password == "" {
+	if user.Password == nil {
 		return "", api_error.Unauthorized("Invalid email or password")
 	}
 
 	// Comparar contraseña con el hash guardado
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(*user.Password), []byte(input.Password)); err != nil {
 		// Log fallido
 		al := model.AuthLog{
 			ID:        uuid.New(),
@@ -462,4 +466,156 @@ func (s *service) LoginPassword(input LoginPassword) (string, error) {
 	}
 
 	return token, nil
+}
+
+// OAuthCreateOrLogin maneja el flujo OAuth: crea usuario si no existe o hace login si existe
+// Email siempre está verificado en OAuth (confiamos en el proveedor)
+func (s *service) OAuthCreateOrLogin(input OAuthCallbackInternal) (string, error) {
+	// Validar que el email no esté vacío
+	if input.UserInfo.Email == "" {
+		return "", api_error.BadRequest("No email provided by OAuth provider")
+	}
+
+	// Validar que el provider sea válido
+	if !enum.IsValidAuthProvider(input.Provider) {
+		return "", api_error.BadRequest("Invalid OAuth provider")
+	}
+
+	// Buscar si el usuario existe por email
+	user, err := s.uRepo.FindByEmail(input.UserInfo.Email)
+
+	if err != nil && err != gorm.ErrRecordNotFound {
+		// Error de BD inesperado
+		return "", api_error.InternalServerError("Could not verify user").WithErr(err)
+	}
+
+	// CASO A: Email NO existe - SIGNUP con OAuth
+	if err == gorm.ErrRecordNotFound {
+		return s.oauthSignUp(input)
+	}
+
+	// CASO B: Email EXISTS - LOGIN con OAuth (puede agregar new provider o usar existente)
+	return s.oauthLogin(input, user)
+}
+
+// oauthSignUp crea un nuevo usuario con OAuth
+func (s *service) oauthSignUp(input OAuthCallbackInternal) (string, error) {
+	// Crear usuario con email verificado (confiamos en OAuth provider)
+	user := model.User{
+		ID:              uuid.New(),
+		Email:           input.UserInfo.Email,
+		Name:            input.UserInfo.Name,
+		Picture:         input.UserInfo.Image,
+		Password:        nil,
+		EmailVerified:   true,
+		EmailVerifiedAt: ptrTime(time.Now()),
+		RoleID:          constant.GenericID,
+	}
+
+	// Crear auth log
+	authLog := model.AuthLog{
+		ID:        uuid.New(),
+		Event:     enum.OAuthLogin,
+		UserID:    user.ID,
+		Ip:        input.Ip,
+		UserAgent: input.UserAgent,
+	}
+
+	// Crear auth provider
+	authProvider := model.AuthProvider{
+		ID:             uuid.New(),
+		Provider:       input.Provider,
+		ProviderUserID: input.UserInfo.ID,
+		UserID:         user.ID,
+	}
+
+	// Transacción: crear user + authlog + authprovider
+	if err := s.repo.CreateOAuthUser(user, authLog, authProvider); err != nil {
+		log.Printf("failed to create OAuth user: %v", err)
+		return "", api_error.InternalServerError("Failed to create user").WithErr(err)
+	}
+
+	// Generar JWT token
+	token, err := helper.GenerateJwt(user.ID.String(), user.Email, user.RoleID.String())
+	if err != nil {
+		log.Printf("failed to generate JWT token after OAuth signup: %v", err)
+		return "", api_error.InternalServerError("Failed to generate authentication token").WithErr(err)
+	}
+
+	fmt.Printf("✅ [OAuth SignUp] Usuario creado exitosamente\n")
+	fmt.Printf("   Email: %s\n", user.Email)
+	fmt.Printf("   Provider: %s\n", input.Provider)
+
+	return token, nil
+}
+
+// oauthLogin maneja el login de un usuario existente con OAuth
+func (s *service) oauthLogin(input OAuthCallbackInternal, user model.User) (string, error) {
+	// Verificar si el usuario ya tiene este proveedor
+	err := s.repo.GetOAuthProvider(user.ID, input.Provider)
+
+	if err != nil && err != gorm.ErrRecordNotFound {
+		// Error inesperado de BD
+		return "", api_error.InternalServerError("Could not verify auth provider").WithErr(err)
+	}
+
+	// CASO B1: El proveedor ya existe para este usuario - Solo crear log
+	if err == nil {
+		authLog := model.AuthLog{
+			ID:        uuid.New(),
+			Event:     enum.OAuthLogin,
+			UserID:    user.ID,
+			Ip:        input.Ip,
+			UserAgent: input.UserAgent,
+		}
+
+		if err := s.repo.CreateAuthLog(authLog); err != nil {
+			log.Printf("failed to create OAuth login log: %v", err)
+			// No fallar el login si falla el log
+		}
+
+		fmt.Printf("✅ [OAuth Login - Existing Provider] Login exitoso\n")
+		fmt.Printf("   Email: %s\n", user.Email)
+		fmt.Printf("   Provider: %s\n", input.Provider)
+
+	} else {
+		// CASO B2: El proveedor NO existe para este usuario - Agregar nuevo proveedor + log
+		authProvider := model.AuthProvider{
+			ID:             uuid.New(),
+			Provider:       input.Provider,
+			ProviderUserID: input.UserInfo.ID,
+			UserID:         user.ID,
+		}
+
+		authLog := model.AuthLog{
+			ID:        uuid.New(),
+			Event:     enum.OAuthLogin,
+			UserID:    user.ID,
+			Ip:        input.Ip,
+			UserAgent: input.UserAgent,
+		}
+
+		if err := s.repo.AddOAuthProviderToUser(user.ID, authProvider, authLog); err != nil {
+			log.Printf("failed to add OAuth provider to user: %v", err)
+			return "", api_error.InternalServerError("Failed to authenticate").WithErr(err)
+		}
+
+		fmt.Printf("✅ [OAuth Login - New Provider] Nuevo proveedor agregado\n")
+		fmt.Printf("   Email: %s\n", user.Email)
+		fmt.Printf("   New Provider: %s\n", input.Provider)
+	}
+
+	// Generar JWT token
+	token, err := helper.GenerateJwt(user.ID.String(), user.Email, user.RoleID.String())
+	if err != nil {
+		log.Printf("failed to generate JWT token after OAuth login: %v", err)
+		return "", api_error.InternalServerError("Failed to generate authentication token").WithErr(err)
+	}
+
+	return token, nil
+}
+
+// ptrTime es un helper para crear un puntero a time.Time
+func ptrTime(t time.Time) *time.Time {
+	return &t
 }

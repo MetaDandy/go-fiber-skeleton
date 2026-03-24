@@ -1,7 +1,16 @@
 package authentication
 
 import (
+	"context"
+	"fmt"
+	"math/rand"
+	"os"
+	"strings"
+	"time"
+
 	"github.com/MetaDandy/go-fiber-skeleton/api_error"
+	"github.com/MetaDandy/go-fiber-skeleton/src/enum"
+	"github.com/MetaDandy/go-fiber-skeleton/src/service/auth"
 	"github.com/MetaDandy/go-fiber-skeleton/src/service/cookie"
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
@@ -18,6 +27,7 @@ type Handler interface {
 	ForgotPassword(c fiber.Ctx) error
 	ResetPassword(c fiber.Ctx) error
 	ChangePassword(c fiber.Ctx) error
+	OAuthCallback(c fiber.Ctx) error
 }
 
 type handler struct {
@@ -41,6 +51,8 @@ func (h *handler) RegisterRoutes(router fiber.Router) {
 	auth.Post("/forgot-password", h.ForgotPassword)
 	auth.Post("/reset-password", h.ResetPassword)
 	auth.Post("/change-password/:userID", h.ChangePassword) // Requiere JWT middleware
+	auth.Get("/login/:provider", h.OAuthLogin)
+	auth.Get("/callback", h.OAuthCallback)
 }
 
 func (h *handler) UserAuthProviders(c fiber.Ctx) error {
@@ -291,5 +303,145 @@ func (h *handler) ChangePassword(c fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"message": "password changed successfully",
+	})
+}
+
+// generateState genera un estado aleatorio para CSRF protection
+func generateState() string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	state := make([]byte, 32)
+	for i := range state {
+		state[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(state)
+}
+
+// OAuthLogin inicia el flujo de login OAuth
+// GET /auth/login/:provider
+func (h *handler) OAuthLogin(c fiber.Ctx) error {
+	provider := c.Params("provider")
+
+	// Validar proveedor
+	if !enum.IsValidAuthProvider(provider) {
+		return api_error.BadRequest("Unsupported oauth provider")
+	}
+
+	// Cargar credenciales
+	creds, err := auth.LoadCredentials(provider)
+	if err != nil {
+		return api_error.InternalServerError("Could not load provider credentials").WithErr(err)
+	}
+
+	// Generar estado para CSRF
+	state := generateState()
+
+	// Guardar estado + provider en cookie con SameSite=None para permitir redirect desde Google
+	c.Cookie(&fiber.Cookie{
+		Name:     "oauth_state",
+		Value:    fmt.Sprintf("%s:%s", state, provider), // Format: state:provider
+		Expires:  time.Now().Add(15 * time.Minute),
+		Path:     "/",
+		SameSite: "None",
+		Secure:   true,
+		HTTPOnly: true,
+	})
+
+	// Obtener URL de autorización
+	authURL, err := auth.GetAuthURL(provider, creds, os.Getenv("URI_REDIRECT"), state)
+	if err != nil {
+		return api_error.InternalServerError("Could not generate auth URL").WithErr(err)
+	}
+
+	return c.Redirect().To(authURL)
+}
+
+// OAuthCallback maneja el callback de OAuth desde el proveedor
+// GET /auth/callback?code=xxx&state=yyy
+func (h *handler) OAuthCallback(c fiber.Ctx) error {
+	code := c.Query("code")
+	state := c.Query("state")
+
+	if code == "" || state == "" {
+		return api_error.BadRequest("Missing required parameters: code or state")
+	}
+
+	// Obtener cookie con state:provider (guardada en OAuthLogin)
+	cookieValue := c.Cookies("oauth_state")
+	if cookieValue == "" {
+		return api_error.BadRequest("OAuth state cookie not found")
+	}
+
+	// Parse: state:provider de la cookie
+	parts := strings.Split(cookieValue, ":")
+	if len(parts) != 2 {
+		return api_error.BadRequest("Invalid oauth state cookie format")
+	}
+
+	cookieState := parts[0]
+	provider := parts[1]
+
+	// Validar state (CSRF protection)
+	if cookieState != state {
+		return api_error.BadRequest("CSRF state validation failed")
+	}
+
+	// Validar que el provider sea válido
+	if !enum.IsValidAuthProvider(provider) {
+		return api_error.BadRequest("Invalid OAuth provider")
+	}
+
+	// Cargar credenciales del proveedor (desde servicio auth)
+	creds, err := auth.LoadCredentials(provider)
+	if err != nil {
+		return api_error.InternalServerError("Could not load provider credentials").WithErr(err)
+	}
+
+	// Intercambiar código por token con el proveedor
+	token, err := auth.ExchangeCode(provider, creds, os.Getenv("URI_REDIRECT"), code)
+	if err != nil {
+		return api_error.InternalServerError("Failed to exchange authorization code").WithErr(err)
+	}
+
+	// Obtener información del usuario desde el proveedor
+	userInfo, err := auth.GetUserInfo(context.Background(), provider, token)
+	if err != nil {
+		return api_error.InternalServerError("Failed to retrieve user information").WithErr(err)
+	}
+
+	// Preparar DTO interno para el servicio
+	oauthInput := OAuthCallbackInternal{
+		Provider: provider,
+		UserInfo: OAuthUserInfo{
+			ID:    userInfo.ID,
+			Email: userInfo.Email,
+			Name:  userInfo.Name,
+			Image: userInfo.Image,
+		},
+		Ip:        c.IP(),
+		UserAgent: c.Get("User-Agent"),
+	}
+
+	// Si la IP no se pudo obtener, intentar con X-Forwarded-For
+	if oauthInput.Ip == "" {
+		oauthInput.Ip = c.Get("X-Forwarded-For")
+	}
+
+	// Llamar al servicio para crear o hacer login del usuario
+	jwtToken, err := h.service.OAuthCreateOrLogin(oauthInput)
+	if err != nil {
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		return api_error.InternalServerError("Authentication failed").WithErr(err)
+	}
+
+	// Setear cookie con el token JWT (HTTPOnly, secure, samesite)
+	cookie.SetAuthTokenCookie(c, jwtToken)
+
+	// Retornar respuesta exitosa
+	return c.JSON(fiber.Map{
+		"success":  true,
+		"message":  "login successful",
+		"provider": provider,
 	})
 }

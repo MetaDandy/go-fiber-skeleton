@@ -19,6 +19,9 @@ type Repo interface {
 	CreateAuthLog(al model.AuthLog) error
 	SavePasswordResetTokenWithLog(prt model.PasswordResetToken, al model.AuthLog) error
 	CompletePasswordReset(userID string, passwordHash string, al model.AuthLog) error
+	CreateOAuthUser(u model.User, al model.AuthLog, ap model.AuthProvider) error
+	GetOAuthProvider(userID uuid.UUID, provider string) error
+	AddOAuthProviderToUser(userID uuid.UUID, ap model.AuthProvider, al model.AuthLog) error
 }
 
 type repo struct {
@@ -133,6 +136,53 @@ func (r *repo) CompletePasswordReset(userID string, passwordHash string, al mode
 		}
 
 		// Guardar el log
+		if err := tx.Create(&al).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
+// CreateOAuthUser crea un nuevo usuario con OAuth: user + authlog + authprovider
+// Operación transaccional - rollback si algo falla
+func (r *repo) CreateOAuthUser(u model.User, al model.AuthLog, ap model.AuthProvider) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// 1. Crear usuario
+		if err := tx.Create(&u).Error; err != nil {
+			return err
+		}
+
+		// 2. Crear auth log
+		if err := tx.Create(&al).Error; err != nil {
+			return err
+		}
+
+		// 3. Crear auth provider
+		if err := tx.Create(&ap).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
+// GetOAuthProvider busca si un usuario tiene un proveedor específico
+// Retorna nil si existe, gorm.ErrRecordNotFound si no existe
+func (r *repo) GetOAuthProvider(userID uuid.UUID, provider string) error {
+	return r.db.Where("user_id = ? AND provider = ?", userID, provider).First(&model.AuthProvider{}).Error
+}
+
+// AddOAuthProviderToUser agrega un nuevo proveedor OAuth a un usuario existente
+// Transacción: agrega provider + crea log
+func (r *repo) AddOAuthProviderToUser(userID uuid.UUID, ap model.AuthProvider, al model.AuthLog) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// 1. Crear auth provider
+		if err := tx.Create(&ap).Error; err != nil {
+			return err
+		}
+
+		// 2. Crear auth log
 		if err := tx.Create(&al).Error; err != nil {
 			return err
 		}
