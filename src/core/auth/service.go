@@ -29,6 +29,9 @@ type Service interface {
 	ResetPassword(input ResetPassword) error
 	ChangePassword(userID uuid.UUID, input ChangePassword, ip string, userAgent string) error
 	OAuthCreateOrLogin(input OAuthCallbackInternal) (string, error)
+	SaveOAuthState(state, provider string) error
+	ValidateOAuthState(state, provider string) error
+	GetOAuthProviderByState(state string) (string, error)
 }
 
 type uRepo interface {
@@ -618,4 +621,19 @@ func (s *service) oauthLogin(input OAuthCallbackInternal, user model.User) (stri
 // ptrTime es un helper para crear un puntero a time.Time
 func ptrTime(t time.Time) *time.Time {
 	return &t
+}
+
+// SaveOAuthState guarda un estado de OAuth en la base de datos
+func (s *service) SaveOAuthState(state, provider string) error {
+	return s.repo.SaveOAuthState(state, provider)
+}
+
+// ValidateOAuthState valida un estado de OAuth y lo consume
+func (s *service) ValidateOAuthState(state, provider string) error {
+	return s.repo.ValidateOAuthState(state, provider)
+}
+
+// GetOAuthProviderByState obtiene el provider asociado a un state
+func (s *service) GetOAuthProviderByState(state string) (string, error) {
+	return s.repo.GetOAuthProviderByState(state)
 }

@@ -2,11 +2,8 @@ package authentication
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"os"
-	"strings"
-	"time"
 
 	"github.com/MetaDandy/go-fiber-skeleton/api_error"
 	"github.com/MetaDandy/go-fiber-skeleton/src/enum"
@@ -335,16 +332,10 @@ func (h *handler) OAuthLogin(c fiber.Ctx) error {
 	// Generar estado para CSRF
 	state := generateState()
 
-	// Guardar estado + provider en cookie con SameSite=None para permitir redirect desde Google
-	c.Cookie(&fiber.Cookie{
-		Name:     "oauth_state",
-		Value:    fmt.Sprintf("%s:%s", state, provider), // Format: state:provider
-		Expires:  time.Now().Add(15 * time.Minute),
-		Path:     "/",
-		SameSite: "None",
-		Secure:   true,
-		HTTPOnly: true,
-	})
+	// Guardar estado en BD para validación en callback
+	if err := h.service.SaveOAuthState(state, provider); err != nil {
+		return api_error.InternalServerError("Failed to save OAuth state").WithErr(err)
+	}
 
 	// Obtener URL de autorización
 	authURL, err := auth.GetAuthURL(provider, creds, os.Getenv("URI_REDIRECT"), state)
@@ -365,29 +356,20 @@ func (h *handler) OAuthCallback(c fiber.Ctx) error {
 		return api_error.BadRequest("Missing required parameters: code or state")
 	}
 
-	// Obtener cookie con state:provider (guardada en OAuthLogin)
-	cookieValue := c.Cookies("oauth_state")
-	if cookieValue == "" {
-		return api_error.BadRequest("OAuth state cookie not found")
-	}
-
-	// Parse: state:provider de la cookie
-	parts := strings.Split(cookieValue, ":")
-	if len(parts) != 2 {
-		return api_error.BadRequest("Invalid oauth state cookie format")
-	}
-
-	cookieState := parts[0]
-	provider := parts[1]
-
-	// Validar state (CSRF protection)
-	if cookieState != state {
-		return api_error.BadRequest("CSRF state validation failed")
+	// Obtener el provider desde BD usando el state (CSRF token)
+	provider, err := h.service.GetOAuthProviderByState(state)
+	if err != nil {
+		return api_error.BadRequest("Invalid or expired OAuth state")
 	}
 
 	// Validar que el provider sea válido
 	if !enum.IsValidAuthProvider(provider) {
 		return api_error.BadRequest("Invalid OAuth provider")
+	}
+
+	// Consumir el state (one-time use) - validar que el state sea válido con este provider
+	if err := h.service.ValidateOAuthState(state, provider); err != nil {
+		return api_error.BadRequest("Invalid or expired OAuth state")
 	}
 
 	// Cargar credenciales del proveedor (desde servicio auth)

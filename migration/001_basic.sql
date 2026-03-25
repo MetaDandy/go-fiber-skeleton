@@ -138,6 +138,15 @@ CREATE TABLE UserRoles (
     FOREIGN KEY (role_id) REFERENCES Roles(id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
+CREATE TABLE oauth_states (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    state TEXT NOT NULL UNIQUE,
+    provider TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    deleted_at TIMESTAMP WITH TIME ZONE
+);
+
 
 -- Indexes
 -- Indexes for users table
@@ -173,7 +182,13 @@ CREATE INDEX idx_sessions_deleted_at ON sessions(deleted_at);
 CREATE INDEX idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX idx_sessions_created_at ON sessions(created_at DESC);
 
+-- Indexes for OAuth states
+CREATE INDEX idx_oauth_states_state ON oauth_states(state);
+CREATE INDEX idx_oauth_states_provider ON oauth_states(provider);
+CREATE INDEX idx_oauth_states_expires_at ON oauth_states(expires_at);
+
 -- +goose Down
+DROP TABLE IF EXISTS oauth_states;
 DROP TABLE IF EXISTS UserRoles;
 DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS PasswordResetTokens;

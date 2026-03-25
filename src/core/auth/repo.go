@@ -22,6 +22,9 @@ type Repo interface {
 	CreateOAuthUser(u model.User, al model.AuthLog, ap model.AuthProvider) error
 	GetOAuthProvider(userID uuid.UUID, provider string) error
 	AddOAuthProviderToUser(userID uuid.UUID, ap model.AuthProvider, al model.AuthLog) error
+	SaveOAuthState(state, provider string) error
+	ValidateOAuthState(state, provider string) error
+	GetOAuthProviderByState(state string) (string, error)
 }
 
 type repo struct {
@@ -189,4 +192,45 @@ func (r *repo) AddOAuthProviderToUser(userID uuid.UUID, ap model.AuthProvider, a
 
 		return nil
 	})
+}
+
+// SaveOAuthState guarda un estado de OAuth temporal para CSRF protection
+func (r *repo) SaveOAuthState(state, provider string) error {
+	oauthState := model.OAuthState{
+		ID:        uuid.New(),
+		State:     state,
+		Provider:  provider,
+		ExpiresAt: time.Now().Add(15 * time.Minute),
+	}
+	return r.db.Create(&oauthState).Error
+}
+
+// ValidateOAuthState valida un estado de OAuth y lo consume (one-time use)
+// Retorna nil si válido, error si inválido/expirado/no encontrado
+func (r *repo) ValidateOAuthState(state, provider string) error {
+	var oauthState model.OAuthState
+
+	// Buscar el estado y validar que no esté expirado
+	if err := r.db.Where("state = ? AND provider = ? AND expires_at > ? AND deleted_at IS NULL",
+		state, provider, time.Now()).
+		First(&oauthState).Error; err != nil {
+		return err
+	}
+
+	// Marcar como consumido (soft delete)
+	return r.db.Model(&oauthState).Update("deleted_at", time.Now()).Error
+}
+
+// GetOAuthProviderByState retorna el provider asociado a un state válido
+func (r *repo) GetOAuthProviderByState(state string) (string, error) {
+	var oauthState model.OAuthState
+
+	// Buscar el estado y validar que no esté expirado
+	if err := r.db.Where("state = ? AND expires_at > ? AND deleted_at IS NULL",
+		state, time.Now()).
+		First(&oauthState).Error; err != nil {
+		return "", err
+	}
+
+	return oauthState.Provider, nil
 }
