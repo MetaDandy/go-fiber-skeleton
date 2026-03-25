@@ -10,8 +10,8 @@ type Repo interface {
 	Create(m model.Role, rp []model.RolePermission) error
 	FindByID(id string) (model.Role, error)
 	FindAll(opts *helper.FindAllOptions) ([]model.Role, int64, error)
-	Update(m model.Role) error
-	Delete(id string) error
+	UpdateHeader(m model.Role) error
+	UpdateDetails(roleID string, add []model.RolePermission, remove []string) error
 }
 
 type repo struct {
@@ -62,11 +62,25 @@ func (r *repo) FindAll(opts *helper.FindAllOptions) ([]model.Role, int64, error)
 	err := query.Find(&finded).Error
 	return finded, total, err
 }
-
-func (r *repo) Update(m model.Role) error {
+func (r *repo) UpdateHeader(m model.Role) error {
 	return r.db.Save(&m).Error
 }
+func (r *repo) UpdateDetails(roleID string, add []model.RolePermission, remove []string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if len(add) > 0 {
+			if err := tx.CreateInBatches(&add, 50).Error; err != nil {
+				return err
+			}
+		}
 
-func (r *repo) Delete(id string) error {
-	return r.db.Delete(&model.Role{}, "id = ?", id).Error
+		if len(remove) > 0 {
+			if err := tx.
+				Where("role_id = ? AND permission_id IN ?", roleID, remove).
+				Delete(&model.RolePermission{}).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }

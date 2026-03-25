@@ -1,0 +1,32 @@
+meta {
+  name: UpdateDetails
+  type: http
+  seq: 4
+}
+
+patch {
+  url: {{url}}/roles/:id/details
+  body: json
+  auth: inherit
+}
+
+params:path {
+  id: 6509b9ce-242a-4770-8545-f0d6a0652b4a
+}
+
+body:json {
+  {
+    "add": [
+      "permission.read",
+      "permission.list"
+    ],
+    "remove": [
+      "role.create"
+    ]
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

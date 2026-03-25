@@ -11,8 +11,8 @@ type Handler interface {
 	Create(c fiber.Ctx) error
 	FindAll(c fiber.Ctx) error
 	FindByID(c fiber.Ctx) error
-	Update(c fiber.Ctx) error
-	Delete(c fiber.Ctx) error
+	UpdateHeader(c fiber.Ctx) error
+	UpdateDetails(c fiber.Ctx) error
 }
 
 type handler struct {
@@ -30,8 +30,8 @@ func (h *handler) RegisterRoutes(router fiber.Router) {
 	roles.Post("/", h.Create)
 	roles.Get("/", h.FindAll)
 	roles.Get("/:id", h.FindByID)
-	roles.Patch("/:id", h.Update)
-	roles.Delete("/:id", h.Delete)
+	roles.Patch("/:id/header", h.UpdateHeader)
+	roles.Patch("/:id/details", h.UpdateDetails)
 }
 
 func (h *handler) Create(c fiber.Ctx) error {
@@ -79,8 +79,8 @@ func (h *handler) FindByID(c fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(finded)
 }
 
-func (h *handler) Update(c fiber.Ctx) error {
-	var input Update
+func (h *handler) UpdateHeader(c fiber.Ctx) error {
+	var input UpdateHeader
 
 	if err := c.Bind().Body(&input); err != nil {
 		return api_error.BadRequest("Invalid request body").WithErr(err)
@@ -88,25 +88,31 @@ func (h *handler) Update(c fiber.Ctx) error {
 
 	id := c.Params("id")
 
-	if err := h.service.Update(id, input); err != nil {
+	if err := h.service.UpdateHeader(id, input); err != nil {
 		if apiErr, ok := err.(*api_error.Error); ok {
 			return apiErr
 		}
-		return api_error.InternalServerError("Could not update role").WithErr(err)
+		return api_error.InternalServerError("Could not update role header").WithErr(err)
 	}
 
 	return c.SendStatus(fiber.StatusOK)
 }
 
-func (h *handler) Delete(c fiber.Ctx) error {
+func (h *handler) UpdateDetails(c fiber.Ctx) error {
+	var input UpdateDetails
+
+	if err := c.Bind().Body(&input); err != nil {
+		return api_error.BadRequest("Invalid request body").WithErr(err)
+	}
+
 	id := c.Params("id")
 
-	if err := h.service.Delete(id); err != nil {
+	if err := h.service.UpdateDetails(id, input); err != nil {
 		if apiErr, ok := err.(*api_error.Error); ok {
 			return apiErr
 		}
-		return api_error.InternalServerError("Could not delete role").WithErr(err)
+		return api_error.InternalServerError("Could not update role details").WithErr(err)
 	}
 
-	return c.SendStatus(fiber.StatusNoContent)
+	return c.SendStatus(fiber.StatusOK)
 }
