@@ -118,6 +118,7 @@ type OAuthCallback struct {
 // OAuthCallbackInternal es el DTO interno después de procesar el callback
 type OAuthCallbackInternal struct {
 	Provider  string
+	State     string // State original para validación y consumo atómico
 	UserInfo  OAuthUserInfo
 	Ip        string
 	UserAgent string

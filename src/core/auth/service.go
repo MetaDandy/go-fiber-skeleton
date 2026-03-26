@@ -474,17 +474,24 @@ func (s *service) LoginPassword(input LoginPassword) (string, error) {
 // OAuthCreateOrLogin maneja el flujo OAuth: crea usuario si no existe o hace login si existe
 // Email siempre está verificado en OAuth (confiamos en el proveedor)
 func (s *service) OAuthCreateOrLogin(input OAuthCallbackInternal) (string, error) {
-	// Validar que el email no esté vacío
+	// 1. Validar que el email no esté vacío
 	if input.UserInfo.Email == "" {
 		return "", api_error.BadRequest("No email provided by OAuth provider")
 	}
 
-	// Validar que el provider sea válido
+	// 2. Validar que el provider sea válido
 	if !enum.IsValidAuthProvider(input.Provider) {
 		return "", api_error.BadRequest("Invalid OAuth provider")
 	}
 
-	// Buscar si el usuario existe por email
+	// 3. Validar el state ANTES de realizar cualquier operación de persistencia
+	// Todavía no lo consumimos, solo verificamos que sea válido.
+	// El consumo debe ser atómico con la creación/login del usuario.
+	if err := s.ValidateOAuthState(input.State, input.Provider); err != nil {
+		return "", api_error.BadRequest("Invalid or expired OAuth state")
+	}
+
+	// 4. Buscar si el usuario existe por email
 	user, err := s.uRepo.FindByEmail(input.UserInfo.Email)
 
 	if err != nil && err != gorm.ErrRecordNotFound {
@@ -532,8 +539,8 @@ func (s *service) oauthSignUp(input OAuthCallbackInternal) (string, error) {
 		UserID:         user.ID,
 	}
 
-	// Transacción: crear user + authlog + authprovider
-	if err := s.repo.CreateOAuthUser(user, authLog, authProvider); err != nil {
+	// Transacción: crear user + authlog + authprovider + consumir state
+	if err := s.repo.CreateOAuthUser(user, authLog, authProvider, input.State); err != nil {
 		log.Printf("failed to create OAuth user: %v", err)
 		return "", api_error.InternalServerError("Failed to create user").WithErr(err)
 	}
@@ -562,7 +569,7 @@ func (s *service) oauthLogin(input OAuthCallbackInternal, user model.User) (stri
 		return "", api_error.InternalServerError("Could not verify auth provider").WithErr(err)
 	}
 
-	// CASO B1: El proveedor ya existe para este usuario - Solo crear log
+	// CASO B1: El proveedor ya existe para este usuario - Consumir state + crear log
 	if err == nil {
 		authLog := model.AuthLog{
 			ID:        uuid.New(),
@@ -570,6 +577,13 @@ func (s *service) oauthLogin(input OAuthCallbackInternal, user model.User) (stri
 			UserID:    user.ID,
 			Ip:        input.Ip,
 			UserAgent: input.UserAgent,
+		}
+
+		// Usamos una transacción para consumir el state y guardar el log
+		// Como no tenemos una función específica para "solo log + consumir state", 
+		// podemos reutilizar el concepto o simplemente validar que el consumo sea atómico.
+		if err := s.repo.ValidateOAuthState(input.State, input.Provider); err != nil {
+			return "", api_error.BadRequest("Invalid or expired OAuth state")
 		}
 
 		if err := s.repo.CreateAuthLog(authLog); err != nil {
@@ -598,7 +612,7 @@ func (s *service) oauthLogin(input OAuthCallbackInternal, user model.User) (stri
 			UserAgent: input.UserAgent,
 		}
 
-		if err := s.repo.AddOAuthProviderToUser(user.ID, authProvider, authLog); err != nil {
+		if err := s.repo.AddOAuthProviderToUser(user.ID, authProvider, authLog, input.State, input.Provider); err != nil {
 			log.Printf("failed to add OAuth provider to user: %v", err)
 			return "", api_error.InternalServerError("Failed to authenticate").WithErr(err)
 		}

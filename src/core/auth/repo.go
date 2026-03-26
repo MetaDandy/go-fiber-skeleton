@@ -19,9 +19,9 @@ type Repo interface {
 	CreateAuthLog(al model.AuthLog) error
 	SavePasswordResetTokenWithLog(prt model.PasswordResetToken, al model.AuthLog) error
 	CompletePasswordReset(userID string, passwordHash string, al model.AuthLog) error
-	CreateOAuthUser(u model.User, al model.AuthLog, ap model.AuthProvider) error
+	CreateOAuthUser(u model.User, al model.AuthLog, ap model.AuthProvider, state string) error
 	GetOAuthProvider(userID uuid.UUID, provider string) error
-	AddOAuthProviderToUser(userID uuid.UUID, ap model.AuthProvider, al model.AuthLog) error
+	AddOAuthProviderToUser(userID uuid.UUID, ap model.AuthProvider, al model.AuthLog, state string, provider string) error
 	SaveOAuthState(state, provider string) error
 	ValidateOAuthState(state, provider string) error
 	GetOAuthProviderByState(state string) (string, error)
@@ -147,21 +147,28 @@ func (r *repo) CompletePasswordReset(userID string, passwordHash string, al mode
 	})
 }
 
-// CreateOAuthUser crea un nuevo usuario con OAuth: user + authlog + authprovider
-// Operación transaccional - rollback si algo falla
-func (r *repo) CreateOAuthUser(u model.User, al model.AuthLog, ap model.AuthProvider) error {
+// CreateOAuthUser crea un nuevo usuario con OAuth: user + authlog + authprovider + consumo de state
+// Operación transaccional - rollback si algo falla, incluyendo la invalidación del state
+func (r *repo) CreateOAuthUser(u model.User, al model.AuthLog, ap model.AuthProvider, state string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		// 1. Crear usuario
+		// 1. Consumir el state (atómico)
+		if err := tx.Model(&model.OAuthState{}).
+			Where("state = ? AND provider = ? AND deleted_at IS NULL", state, ap.Provider).
+			Update("deleted_at", time.Now()).Error; err != nil {
+			return err
+		}
+
+		// 2. Crear usuario
 		if err := tx.Create(&u).Error; err != nil {
 			return err
 		}
 
-		// 2. Crear auth log
+		// 3. Crear auth log
 		if err := tx.Create(&al).Error; err != nil {
 			return err
 		}
 
-		// 3. Crear auth provider
+		// 4. Crear auth provider
 		if err := tx.Create(&ap).Error; err != nil {
 			return err
 		}
@@ -176,16 +183,23 @@ func (r *repo) GetOAuthProvider(userID uuid.UUID, provider string) error {
 	return r.db.Where("user_id = ? AND provider = ?", userID, provider).First(&model.AuthProvider{}).Error
 }
 
-// AddOAuthProviderToUser agrega un nuevo proveedor OAuth a un usuario existente
-// Transacción: agrega provider + crea log
-func (r *repo) AddOAuthProviderToUser(userID uuid.UUID, ap model.AuthProvider, al model.AuthLog) error {
+// AddOAuthProviderToUser agrega un nuevo proveedor OAuth a un usuario existente y consume el state
+// Transacción: consume state + agrega provider + crea log
+func (r *repo) AddOAuthProviderToUser(userID uuid.UUID, ap model.AuthProvider, al model.AuthLog, state string, provider string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		// 1. Crear auth provider
+		// 1. Consumir el state (atómico)
+		if err := tx.Model(&model.OAuthState{}).
+			Where("state = ? AND provider = ? AND deleted_at IS NULL", state, provider).
+			Update("deleted_at", time.Now()).Error; err != nil {
+			return err
+		}
+
+		// 2. Crear auth provider
 		if err := tx.Create(&ap).Error; err != nil {
 			return err
 		}
 
-		// 2. Crear auth log
+		// 3. Crear auth log
 		if err := tx.Create(&al).Error; err != nil {
 			return err
 		}

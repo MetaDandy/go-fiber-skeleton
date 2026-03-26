@@ -367,11 +367,6 @@ func (h *handler) OAuthCallback(c fiber.Ctx) error {
 		return api_error.BadRequest("Invalid OAuth provider")
 	}
 
-	// Consumir el state (one-time use) - validar que el state sea válido con este provider
-	if err := h.service.ValidateOAuthState(state, provider); err != nil {
-		return api_error.BadRequest("Invalid or expired OAuth state")
-	}
-
 	// Cargar credenciales del proveedor (desde servicio auth)
 	creds, err := auth.LoadCredentials(provider)
 	if err != nil {
@@ -393,6 +388,7 @@ func (h *handler) OAuthCallback(c fiber.Ctx) error {
 	// Preparar DTO interno para el servicio
 	oauthInput := OAuthCallbackInternal{
 		Provider: provider,
+		State:    state, // Pasar el state para validación y consumo atómico en el servicio
 		UserInfo: OAuthUserInfo{
 			ID:    userInfo.ID,
 			Email: userInfo.Email,
@@ -409,6 +405,7 @@ func (h *handler) OAuthCallback(c fiber.Ctx) error {
 	}
 
 	// Llamar al servicio para crear o hacer login del usuario
+	// Ahora el servicio se encarga de validar el state ANTES de persistir
 	jwtToken, err := h.service.OAuthCreateOrLogin(oauthInput)
 	if err != nil {
 		if apiErr, ok := err.(*api_error.Error); ok {
