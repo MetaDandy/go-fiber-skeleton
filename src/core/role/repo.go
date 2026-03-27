@@ -7,7 +7,7 @@ import (
 )
 
 type Repo interface {
-	Create(m model.Role, rp []model.RolePermission) error
+	Create(m model.Role, rp []model.RolePermission, rep []model.RoleEffectivePermission) error
 	FindByID(id string) (model.Role, error)
 	FindAll(opts *helper.FindAllOptions) ([]model.Role, int64, error)
 	UpdateHeader(m model.Role) error
@@ -22,7 +22,11 @@ func NewRepo(db *gorm.DB) *repo {
 	return &repo{db: db}
 }
 
-func (r *repo) Create(m model.Role, rp []model.RolePermission) error {
+func (r *repo) Create(
+	m model.Role,
+	rp []model.RolePermission,
+	rep []model.RoleEffectivePermission,
+) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&m).Error; err != nil {
 			return err
@@ -34,13 +38,19 @@ func (r *repo) Create(m model.Role, rp []model.RolePermission) error {
 			}
 		}
 
+		if len(rep) > 0 {
+			if err := tx.CreateInBatches(&rep, 50).Error; err != nil {
+				return err
+			}
+		}
+
 		return nil
 	})
 }
 
 func (r *repo) FindByID(id string) (model.Role, error) {
 	var role model.Role
-	err := r.db.Preload("Role_permissions").First(&role, "id = ?", id).Error
+	err := r.db.Preload("Role_permissions").Preload("Role_effective_permissions").First(&role, "id = ?", id).Error
 	return role, err
 }
 

@@ -8,11 +8,12 @@ import (
 )
 
 type Role struct {
-	ID          string           `json:"id"`
-	Name        string           `json:"name"`
-	Description string           `json:"description"`
-	RoleID      string           `json:"role_id"`
-	Permissions []RolePermission `json:"permissions"`
+	ID                   string                    `json:"id"`
+	Name                 string                    `json:"name"`
+	Description          string                    `json:"description"`
+	RoleID               string                    `json:"role_id"`
+	Permissions          []RolePermission          `json:"permissions"`
+	EffectivePermissions []RoleEffectivePermission `json:"effective_permissions"`
 
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
@@ -29,6 +30,9 @@ func RoleToDto(m *model.Role) Role {
 	}
 	if len(m.Role_permissions) > 0 {
 		dto.Permissions = RolePermissionToListDto(m.Role_permissions)
+	}
+	if len(m.Role_effective_permissions) > 0 {
+		dto.EffectivePermissions = RoleEffectivePermissionToListDto(m.Role_effective_permissions)
 	}
 	dto.CreatedAt = m.CreatedAt.Format(time.RFC3339)
 	dto.UpdatedAt = m.UpdatedAt.Format(time.RFC3339)

@@ -41,12 +41,40 @@ func (s *service) Create(input Create) error {
 	roleID := uuid.New()
 
 	var parentID *uuid.UUID
+	var parentEffectivePermissions []model.RoleEffectivePermission
+	filteredPermissions := make([]string, 0, len(input.Permissions))
+
 	if input.RoleID != nil && *input.RoleID != "" {
 		parsedRoleID, err := uuid.Parse(*input.RoleID)
 		if err != nil {
 			return err
 		}
-		parentID = &parsedRoleID
+
+		parentRole, err := s.repo.FindByID(parsedRoleID.String())
+		if err != nil {
+			return err
+		}
+
+		parentID = &parentRole.ID
+		parentEffectivePermissions = parentRole.Role_effective_permissions
+
+		parentEffectiveMap := make(map[string]struct{}, len(parentEffectivePermissions))
+		for _, rep := range parentEffectivePermissions {
+			parentEffectiveMap[rep.PermissionID] = struct{}{}
+		}
+
+		for _, permissionID := range input.Permissions {
+			if _, exists := parentEffectiveMap[permissionID]; exists {
+				continue
+			}
+			filteredPermissions = append(filteredPermissions, permissionID)
+		}
+
+		if len(filteredPermissions) == 0 {
+			return api_error.BadRequest("All permissions are already inherited from parent role")
+		}
+	} else {
+		filteredPermissions = input.Permissions
 	}
 
 	role := model.Role{
@@ -56,8 +84,8 @@ func (s *service) Create(input Create) error {
 		RoleID:      parentID,
 	}
 
-	rolePermissions := make([]model.RolePermission, 0, len(input.Permissions))
-	for _, permissionID := range input.Permissions {
+	rolePermissions := make([]model.RolePermission, 0, len(filteredPermissions))
+	for _, permissionID := range filteredPermissions {
 		rolePermissions = append(rolePermissions, model.RolePermission{
 			ID:           uuid.New(),
 			RoleID:       roleID,
@@ -65,7 +93,25 @@ func (s *service) Create(input Create) error {
 		})
 	}
 
-	return s.repo.Create(role, rolePermissions)
+	roleEffectivePermissions := make([]model.RoleEffectivePermission, 0, len(parentEffectivePermissions)+len(filteredPermissions))
+
+	for _, inherited := range parentEffectivePermissions {
+		roleEffectivePermissions = append(roleEffectivePermissions, model.RoleEffectivePermission{
+			ID:           uuid.New(),
+			RoleID:       roleID,
+			PermissionID: inherited.PermissionID,
+		})
+	}
+
+	for _, permissionID := range filteredPermissions {
+		roleEffectivePermissions = append(roleEffectivePermissions, model.RoleEffectivePermission{
+			ID:           uuid.New(),
+			RoleID:       roleID,
+			PermissionID: permissionID,
+		})
+	}
+
+	return s.repo.Create(role, rolePermissions, roleEffectivePermissions)
 }
 
 func (s *service) FindByID(id string) (*response.Role, error) {
