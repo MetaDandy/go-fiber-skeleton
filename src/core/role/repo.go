@@ -7,11 +7,11 @@ import (
 )
 
 type Repo interface {
-	Create(m model.Role, rp []model.RolePermission) error
+	Create(m model.Role, rp []model.RolePermission, rep []model.RoleEffectivePermission) error
 	FindByID(id string) (model.Role, error)
 	FindAll(opts *helper.FindAllOptions) ([]model.Role, int64, error)
-	Update(m model.Role) error
-	Delete(id string) error
+	UpdateHeader(m model.Role) error
+	UpdateDetails(roleID string, add []model.RolePermission, remove []string) error
 }
 
 type repo struct {
@@ -22,7 +22,11 @@ func NewRepo(db *gorm.DB) *repo {
 	return &repo{db: db}
 }
 
-func (r *repo) Create(m model.Role, rp []model.RolePermission) error {
+func (r *repo) Create(
+	m model.Role,
+	rp []model.RolePermission,
+	rep []model.RoleEffectivePermission,
+) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&m).Error; err != nil {
 			return err
@@ -34,13 +38,19 @@ func (r *repo) Create(m model.Role, rp []model.RolePermission) error {
 			}
 		}
 
+		if len(rep) > 0 {
+			if err := tx.CreateInBatches(&rep, 50).Error; err != nil {
+				return err
+			}
+		}
+
 		return nil
 	})
 }
 
 func (r *repo) FindByID(id string) (model.Role, error) {
 	var role model.Role
-	err := r.db.Preload("Role_permissions").First(&role, "id = ?", id).Error
+	err := r.db.Preload("Role_permissions").Preload("Role_effective_permissions").First(&role, "id = ?", id).Error
 	return role, err
 }
 
@@ -62,11 +72,25 @@ func (r *repo) FindAll(opts *helper.FindAllOptions) ([]model.Role, int64, error)
 	err := query.Find(&finded).Error
 	return finded, total, err
 }
-
-func (r *repo) Update(m model.Role) error {
+func (r *repo) UpdateHeader(m model.Role) error {
 	return r.db.Save(&m).Error
 }
+func (r *repo) UpdateDetails(roleID string, add []model.RolePermission, remove []string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if len(add) > 0 {
+			if err := tx.CreateInBatches(&add, 50).Error; err != nil {
+				return err
+			}
+		}
 
-func (r *repo) Delete(id string) error {
-	return r.db.Delete(&model.Role{}, "id = ?", id).Error
+		if len(remove) > 0 {
+			if err := tx.
+				Where("role_id = ? AND permission_id IN ?", roleID, remove).
+				Delete(&model.RolePermission{}).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }

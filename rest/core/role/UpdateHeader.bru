@@ -1,0 +1,28 @@
+meta {
+  name: UpdateHeader
+  type: http
+  seq: 5
+}
+
+patch {
+  url: {{url}}/roles/:id/header
+  body: json
+  auth: inherit
+}
+
+params:path {
+  id: 6509b9ce-242a-4770-8545-f0d6a0652b4a
+}
+
+body:json {
+  {
+    "name": "Admin General",
+    "description": "Rol con todos los permisos",
+    "role_id": "664d7cc6-6e40-45c2-97a4-8291d29cad5f"
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

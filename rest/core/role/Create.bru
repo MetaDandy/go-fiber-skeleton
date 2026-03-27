@@ -1,7 +1,7 @@
 meta {
   name: Create
   type: http
-  seq: 3
+  seq: 2
 }
 
 post {
@@ -11,7 +11,7 @@ post {
 }
 
 body:json {
-  //
+  /*/
   {
     "name": "Administrador",
     "description": "Rol con acceso total",
@@ -21,8 +21,17 @@ body:json {
       "permission.list",
       "role.create"
     ]
-  }///
-  /*
+  }//*/
+  {
+    "name": "Encargado",
+    "description": "Rol con acceso a permissions",
+    "role_id": "",
+    "permissions": [
+      "permission.read",
+      "permission.list"
+    ]
+  }
+  /*/
   {
     "name": "SubAdministrador",
     "description": "Rol subordinado",

@@ -1,6 +1,7 @@
 package role
 
 import (
+	"github.com/MetaDandy/go-fiber-skeleton/api_error"
 	"github.com/MetaDandy/go-fiber-skeleton/helper"
 	"github.com/MetaDandy/go-fiber-skeleton/src/model"
 	"github.com/MetaDandy/go-fiber-skeleton/src/response"
@@ -12,8 +13,8 @@ type Service interface {
 	Create(input Create) error
 	FindByID(id string) (*response.Role, error)
 	FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.Role], error)
-	Update(id string, input Update) error
-	Delete(id string) error
+	UpdateHeader(id string, input UpdateHeader) error
+	UpdateDetails(id string, input UpdateDetails) error
 }
 
 type PermissionChecker interface {
@@ -40,12 +41,40 @@ func (s *service) Create(input Create) error {
 	roleID := uuid.New()
 
 	var parentID *uuid.UUID
+	var parentEffectivePermissions []model.RoleEffectivePermission
+	filteredPermissions := make([]string, 0, len(input.Permissions))
+
 	if input.RoleID != nil && *input.RoleID != "" {
 		parsedRoleID, err := uuid.Parse(*input.RoleID)
 		if err != nil {
 			return err
 		}
-		parentID = &parsedRoleID
+
+		parentRole, err := s.repo.FindByID(parsedRoleID.String())
+		if err != nil {
+			return err
+		}
+
+		parentID = &parentRole.ID
+		parentEffectivePermissions = parentRole.Role_effective_permissions
+
+		parentEffectiveMap := make(map[string]struct{}, len(parentEffectivePermissions))
+		for _, rep := range parentEffectivePermissions {
+			parentEffectiveMap[rep.PermissionID] = struct{}{}
+		}
+
+		for _, permissionID := range input.Permissions {
+			if _, exists := parentEffectiveMap[permissionID]; exists {
+				continue
+			}
+			filteredPermissions = append(filteredPermissions, permissionID)
+		}
+
+		if len(filteredPermissions) == 0 {
+			return api_error.BadRequest("All permissions are already inherited from parent role")
+		}
+	} else {
+		filteredPermissions = input.Permissions
 	}
 
 	role := model.Role{
@@ -55,8 +84,8 @@ func (s *service) Create(input Create) error {
 		RoleID:      parentID,
 	}
 
-	rolePermissions := make([]model.RolePermission, 0, len(input.Permissions))
-	for _, permissionID := range input.Permissions {
+	rolePermissions := make([]model.RolePermission, 0, len(filteredPermissions))
+	for _, permissionID := range filteredPermissions {
 		rolePermissions = append(rolePermissions, model.RolePermission{
 			ID:           uuid.New(),
 			RoleID:       roleID,
@@ -64,7 +93,25 @@ func (s *service) Create(input Create) error {
 		})
 	}
 
-	return s.repo.Create(role, rolePermissions)
+	roleEffectivePermissions := make([]model.RoleEffectivePermission, 0, len(parentEffectivePermissions)+len(filteredPermissions))
+
+	for _, inherited := range parentEffectivePermissions {
+		roleEffectivePermissions = append(roleEffectivePermissions, model.RoleEffectivePermission{
+			ID:           uuid.New(),
+			RoleID:       roleID,
+			PermissionID: inherited.PermissionID,
+		})
+	}
+
+	for _, permissionID := range filteredPermissions {
+		roleEffectivePermissions = append(roleEffectivePermissions, model.RoleEffectivePermission{
+			ID:           uuid.New(),
+			RoleID:       roleID,
+			PermissionID: permissionID,
+		})
+	}
+
+	return s.repo.Create(role, rolePermissions, roleEffectivePermissions)
 }
 
 func (s *service) FindByID(id string) (*response.Role, error) {
@@ -95,7 +142,39 @@ func (s *service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[resp
 	}, nil
 }
 
-func (s *service) Update(id string, input Update) error {
+func hasAtLeastOneElement(add, remove []string) bool {
+	return len(add) > 0 || len(remove) > 0
+}
+
+func removeDuplicatesBetweenArrays(add, remove []string) ([]string, []string) {
+	removeSet := make(map[string]struct{}, len(remove))
+	for _, id := range remove {
+		removeSet[id] = struct{}{}
+	}
+
+	filteredAdd := make([]string, 0, len(add))
+	common := make(map[string]struct{})
+
+	for _, id := range add {
+		if _, exists := removeSet[id]; exists {
+			common[id] = struct{}{}
+			continue
+		}
+		filteredAdd = append(filteredAdd, id)
+	}
+
+	filteredRemove := make([]string, 0, len(remove))
+	for _, id := range remove {
+		if _, exists := common[id]; exists {
+			continue
+		}
+		filteredRemove = append(filteredRemove, id)
+	}
+
+	return filteredAdd, filteredRemove
+}
+
+func (s *service) UpdateHeader(id string, input UpdateHeader) error {
 	role, err := s.repo.FindByID(id)
 	if err != nil {
 		return err
@@ -122,13 +201,65 @@ func (s *service) Update(id string, input Update) error {
 		}
 	}
 
-	if err := s.repo.Update(role); err != nil {
+	return s.repo.UpdateHeader(role)
+}
+
+func (s *service) UpdateDetails(id string, input UpdateDetails) error {
+	add := input.Add
+	remove := input.Remove
+
+	if !hasAtLeastOneElement(add, remove) {
+		return api_error.BadRequest("At least one of add or remove must contain one element")
+	}
+
+	add, remove = removeDuplicatesBetweenArrays(add, remove)
+
+	if !hasAtLeastOneElement(add, remove) {
+		return api_error.BadRequest("At least one of add or remove must contain one element")
+	}
+
+	role, err := s.repo.FindByID(id)
+	if err != nil {
 		return err
 	}
 
-	return nil
-}
+	currentPermissions := make(map[string]model.RolePermission, len(role.Role_permissions))
+	for _, rp := range role.Role_permissions {
+		currentPermissions[rp.PermissionID] = rp
+	}
 
-func (s *service) Delete(id string) error {
-	return s.repo.Delete(id)
+	filteredAdd := make([]string, 0, len(add))
+	for _, permissionID := range add {
+		if _, exists := currentPermissions[permissionID]; exists {
+			continue
+		}
+		filteredAdd = append(filteredAdd, permissionID)
+	}
+
+	filteredRemove := make([]string, 0, len(remove))
+	for _, permissionID := range remove {
+		if _, exists := currentPermissions[permissionID]; !exists {
+			continue
+		}
+		filteredRemove = append(filteredRemove, permissionID)
+	}
+
+	if !hasAtLeastOneElement(filteredAdd, filteredRemove) {
+		return api_error.BadRequest("No valid permissions to add or remove")
+	}
+
+	if err := s.permissionChecker.AllExists(filteredAdd); err != nil {
+		return err
+	}
+
+	rolePermissionsToAdd := make([]model.RolePermission, 0, len(filteredAdd))
+	for _, permissionID := range filteredAdd {
+		rolePermissionsToAdd = append(rolePermissionsToAdd, model.RolePermission{
+			ID:           uuid.New(),
+			RoleID:       role.ID,
+			PermissionID: permissionID,
+		})
+	}
+
+	return s.repo.UpdateDetails(role.ID.String(), rolePermissionsToAdd, filteredRemove)
 }
