@@ -18,12 +18,14 @@ type Handler interface {
 	UserAuthProviders(c fiber.Ctx) error
 	SignUpPassword(c fiber.Ctx) error
 	LoginPassword(c fiber.Ctx) error
+	RefreshToken(c fiber.Ctx) error
 	SendTestEmail(c fiber.Ctx) error
 	VerifyEmail(c fiber.Ctx) error
 	ResendVerificationEmail(c fiber.Ctx) error
 	ForgotPassword(c fiber.Ctx) error
 	ResetPassword(c fiber.Ctx) error
 	ChangePassword(c fiber.Ctx) error
+	Logout(c fiber.Ctx) error
 	OAuthCallback(c fiber.Ctx) error
 }
 
@@ -42,6 +44,8 @@ func (h *handler) RegisterRoutes(router fiber.Router) {
 	auth.Get("/providers/:email", h.UserAuthProviders)
 	auth.Post("/signup", h.SignUpPassword)
 	auth.Post("/signin", h.LoginPassword)
+	auth.Post("/refresh", h.RefreshToken)
+	auth.Post("/logout", h.Logout)
 	auth.Post("/send-test-email", h.SendTestEmail)
 	auth.Get("/verify-email/:token", h.VerifyEmail)
 	auth.Get("/resend-verification-email/:email", h.ResendVerificationEmail)
@@ -116,7 +120,7 @@ func (h *handler) LoginPassword(c fiber.Ctx) error {
 		return err
 	}
 
-	token, err := h.service.LoginPassword(input)
+	token, refreshToken, err := h.service.LoginPassword(input)
 	if err != nil {
 		if apiErr, ok := err.(*api_error.Error); ok {
 			return apiErr
@@ -124,11 +128,56 @@ func (h *handler) LoginPassword(c fiber.Ctx) error {
 		return api_error.InternalServerError("LoginPassword failed").WithErr(err)
 	}
 
-	// Setear cookie con el token (HTTPOnly, secure, samesite)
+	// Setear cookies con los tokens
 	cookie.SetAuthTokenCookie(c, token)
+	cookie.SetRefreshTokenCookie(c, refreshToken)
 
 	return c.JSON(fiber.Map{
 		"message": "login successful",
+	})
+}
+
+func (h *handler) RefreshToken(c fiber.Ctx) error {
+	// 1. Obtener el refresh token de la cookie
+	refreshToken := c.Cookies(cookie.CookieNameRefreshToken)
+	if refreshToken == "" {
+		return api_error.Unauthorized("No refresh token provided")
+	}
+
+	ip := c.IP()
+	userAgent := c.Get("User-Agent")
+
+	// 2. Llamar al servicio para rotar el token
+	newToken, newRefreshToken, err := h.service.RefreshToken(refreshToken, ip, userAgent)
+	if err != nil {
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		return api_error.Unauthorized("Could not refresh token").WithErr(err)
+	}
+
+	// 3. Setear las nuevas cookies
+	cookie.SetAuthTokenCookie(c, newToken)
+	cookie.SetRefreshTokenCookie(c, newRefreshToken)
+
+	return c.JSON(fiber.Map{
+		"message": "token refreshed successfully",
+	})
+}
+
+func (h *handler) Logout(c fiber.Ctx) error {
+	// 1. Obtener el refresh token para invalidar la sesión en DB
+	refreshToken := cookie.GetRefreshTokenCookie(c)
+
+	if refreshToken != "" {
+		_ = h.service.Logout(refreshToken)
+	}
+
+	// 2. Limpiar todas las cookies de autenticación
+	cookie.ClearAllAuthCookies(c)
+
+	return c.JSON(fiber.Map{
+		"message": "logout successful",
 	})
 }
 
@@ -406,7 +455,7 @@ func (h *handler) OAuthCallback(c fiber.Ctx) error {
 
 	// Llamar al servicio para crear o hacer login del usuario
 	// Ahora el servicio se encarga de validar el state ANTES de persistir
-	jwtToken, err := h.service.OAuthCreateOrLogin(oauthInput)
+	jwtToken, refreshToken, err := h.service.OAuthCreateOrLogin(oauthInput)
 	if err != nil {
 		if apiErr, ok := err.(*api_error.Error); ok {
 			return apiErr
@@ -414,8 +463,9 @@ func (h *handler) OAuthCallback(c fiber.Ctx) error {
 		return api_error.InternalServerError("Authentication failed").WithErr(err)
 	}
 
-	// Setear cookie con el token JWT (HTTPOnly, secure, samesite)
+	// Setear cookies con los tokens
 	cookie.SetAuthTokenCookie(c, jwtToken)
+	cookie.SetRefreshTokenCookie(c, refreshToken)
 
 	// Retornar respuesta exitosa
 	return c.JSON(fiber.Map{

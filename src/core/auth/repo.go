@@ -25,6 +25,10 @@ type Repo interface {
 	SaveOAuthState(state, provider string) error
 	ValidateOAuthState(state, provider string) error
 	GetOAuthProviderByState(state string) (string, error)
+	CreateSession(session model.Session) error
+	GetSessionByHash(hash string) (model.Session, error)
+	RevokeSession(id uuid.UUID) error
+	RevokeAllUserSessions(userID uuid.UUID) error
 }
 
 type repo struct {
@@ -247,4 +251,22 @@ func (r *repo) GetOAuthProviderByState(state string) (string, error) {
 	}
 
 	return oauthState.Provider, nil
+}
+
+func (r *repo) CreateSession(session model.Session) error {
+	return r.db.Create(&session).Error
+}
+
+func (r *repo) GetSessionByHash(hash string) (model.Session, error) {
+	var session model.Session
+	err := r.db.Where("refresh_token_hash = ? AND revoked_at IS NULL", hash).First(&session).Error
+	return session, err
+}
+
+func (r *repo) RevokeSession(id uuid.UUID) error {
+	return r.db.Model(&model.Session{}).Where("id = ?", id).Update("revoked_at", time.Now()).Error
+}
+
+func (r *repo) RevokeAllUserSessions(userID uuid.UUID) error {
+	return r.db.Model(&model.Session{}).Where("user_id = ? AND revoked_at IS NULL", userID).Update("revoked_at", time.Now()).Error
 }
