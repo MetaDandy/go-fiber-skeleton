@@ -1,7 +1,13 @@
 package authentication
 
 import (
+	"context"
+	"math/rand"
+	"os"
+
 	"github.com/MetaDandy/go-fiber-skeleton/api_error"
+	"github.com/MetaDandy/go-fiber-skeleton/src/enum"
+	"github.com/MetaDandy/go-fiber-skeleton/src/service/auth"
 	"github.com/MetaDandy/go-fiber-skeleton/src/service/cookie"
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
@@ -12,12 +18,15 @@ type Handler interface {
 	UserAuthProviders(c fiber.Ctx) error
 	SignUpPassword(c fiber.Ctx) error
 	LoginPassword(c fiber.Ctx) error
+	RefreshToken(c fiber.Ctx) error
 	SendTestEmail(c fiber.Ctx) error
 	VerifyEmail(c fiber.Ctx) error
 	ResendVerificationEmail(c fiber.Ctx) error
 	ForgotPassword(c fiber.Ctx) error
 	ResetPassword(c fiber.Ctx) error
 	ChangePassword(c fiber.Ctx) error
+	Logout(c fiber.Ctx) error
+	OAuthCallback(c fiber.Ctx) error
 }
 
 type handler struct {
@@ -35,12 +44,16 @@ func (h *handler) RegisterRoutes(router fiber.Router) {
 	auth.Get("/providers/:email", h.UserAuthProviders)
 	auth.Post("/signup", h.SignUpPassword)
 	auth.Post("/signin", h.LoginPassword)
+	auth.Post("/refresh", h.RefreshToken)
+	auth.Post("/logout", h.Logout)
 	auth.Post("/send-test-email", h.SendTestEmail)
 	auth.Get("/verify-email/:token", h.VerifyEmail)
 	auth.Get("/resend-verification-email/:email", h.ResendVerificationEmail)
 	auth.Post("/forgot-password", h.ForgotPassword)
 	auth.Post("/reset-password", h.ResetPassword)
 	auth.Post("/change-password/:userID", h.ChangePassword) // Requiere JWT middleware
+	auth.Get("/login/:provider", h.OAuthLogin)
+	auth.Get("/callback", h.OAuthCallback)
 }
 
 func (h *handler) UserAuthProviders(c fiber.Ctx) error {
@@ -107,7 +120,7 @@ func (h *handler) LoginPassword(c fiber.Ctx) error {
 		return err
 	}
 
-	token, err := h.service.LoginPassword(input)
+	token, refreshToken, err := h.service.LoginPassword(input)
 	if err != nil {
 		if apiErr, ok := err.(*api_error.Error); ok {
 			return apiErr
@@ -115,11 +128,56 @@ func (h *handler) LoginPassword(c fiber.Ctx) error {
 		return api_error.InternalServerError("LoginPassword failed").WithErr(err)
 	}
 
-	// Setear cookie con el token (HTTPOnly, secure, samesite)
+	// Setear cookies con los tokens
 	cookie.SetAuthTokenCookie(c, token)
+	cookie.SetRefreshTokenCookie(c, refreshToken)
 
 	return c.JSON(fiber.Map{
 		"message": "login successful",
+	})
+}
+
+func (h *handler) RefreshToken(c fiber.Ctx) error {
+	// 1. Obtener el refresh token de la cookie
+	refreshToken := c.Cookies(cookie.CookieNameRefreshToken)
+	if refreshToken == "" {
+		return api_error.Unauthorized("No refresh token provided")
+	}
+
+	ip := c.IP()
+	userAgent := c.Get("User-Agent")
+
+	// 2. Llamar al servicio para rotar el token
+	newToken, newRefreshToken, err := h.service.RefreshToken(refreshToken, ip, userAgent)
+	if err != nil {
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		return api_error.Unauthorized("Could not refresh token").WithErr(err)
+	}
+
+	// 3. Setear las nuevas cookies
+	cookie.SetAuthTokenCookie(c, newToken)
+	cookie.SetRefreshTokenCookie(c, newRefreshToken)
+
+	return c.JSON(fiber.Map{
+		"message": "token refreshed successfully",
+	})
+}
+
+func (h *handler) Logout(c fiber.Ctx) error {
+	// 1. Obtener el refresh token para invalidar la sesión en DB
+	refreshToken := cookie.GetRefreshTokenCookie(c)
+
+	if refreshToken != "" {
+		_ = h.service.Logout(refreshToken)
+	}
+
+	// 2. Limpiar todas las cookies de autenticación
+	cookie.ClearAllAuthCookies(c)
+
+	return c.JSON(fiber.Map{
+		"message": "logout successful",
 	})
 }
 
@@ -291,5 +349,128 @@ func (h *handler) ChangePassword(c fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"message": "password changed successfully",
+	})
+}
+
+// generateState genera un estado aleatorio para CSRF protection
+func generateState() string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	state := make([]byte, 32)
+	for i := range state {
+		state[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(state)
+}
+
+// OAuthLogin inicia el flujo de login OAuth
+// GET /auth/login/:provider
+func (h *handler) OAuthLogin(c fiber.Ctx) error {
+	provider := c.Params("provider")
+
+	// Validar proveedor
+	if !enum.IsValidAuthProvider(provider) {
+		return api_error.BadRequest("Unsupported oauth provider")
+	}
+
+	// Cargar credenciales
+	creds, err := auth.LoadCredentials(provider)
+	if err != nil {
+		return api_error.InternalServerError("Could not load provider credentials").WithErr(err)
+	}
+
+	// Generar estado para CSRF
+	state := generateState()
+
+	// Guardar estado en BD para validación en callback
+	if err := h.service.SaveOAuthState(state, provider); err != nil {
+		return api_error.InternalServerError("Failed to save OAuth state").WithErr(err)
+	}
+
+	// Obtener URL de autorización
+	authURL, err := auth.GetAuthURL(provider, creds, os.Getenv("URI_REDIRECT"), state)
+	if err != nil {
+		return api_error.InternalServerError("Could not generate auth URL").WithErr(err)
+	}
+
+	return c.Redirect().To(authURL)
+}
+
+// OAuthCallback maneja el callback de OAuth desde el proveedor
+// GET /auth/callback?code=xxx&state=yyy
+func (h *handler) OAuthCallback(c fiber.Ctx) error {
+	code := c.Query("code")
+	state := c.Query("state")
+
+	if code == "" || state == "" {
+		return api_error.BadRequest("Missing required parameters: code or state")
+	}
+
+	// Obtener el provider desde BD usando el state (CSRF token)
+	provider, err := h.service.GetOAuthProviderByState(state)
+	if err != nil {
+		return api_error.BadRequest("Invalid or expired OAuth state")
+	}
+
+	// Validar que el provider sea válido
+	if !enum.IsValidAuthProvider(provider) {
+		return api_error.BadRequest("Invalid OAuth provider")
+	}
+
+	// Cargar credenciales del proveedor (desde servicio auth)
+	creds, err := auth.LoadCredentials(provider)
+	if err != nil {
+		return api_error.InternalServerError("Could not load provider credentials").WithErr(err)
+	}
+
+	// Intercambiar código por token con el proveedor
+	token, err := auth.ExchangeCode(provider, creds, os.Getenv("URI_REDIRECT"), code)
+	if err != nil {
+		return api_error.InternalServerError("Failed to exchange authorization code").WithErr(err)
+	}
+
+	// Obtener información del usuario desde el proveedor
+	userInfo, err := auth.GetUserInfo(context.Background(), provider, token)
+	if err != nil {
+		return api_error.InternalServerError("Failed to retrieve user information").WithErr(err)
+	}
+
+	// Preparar DTO interno para el servicio
+	oauthInput := OAuthCallbackInternal{
+		Provider: provider,
+		State:    state, // Pasar el state para validación y consumo atómico en el servicio
+		UserInfo: OAuthUserInfo{
+			ID:    userInfo.ID,
+			Email: userInfo.Email,
+			Name:  userInfo.Name,
+			Image: userInfo.Image,
+		},
+		Ip:        c.IP(),
+		UserAgent: c.Get("User-Agent"),
+	}
+
+	// Si la IP no se pudo obtener, intentar con X-Forwarded-For
+	if oauthInput.Ip == "" {
+		oauthInput.Ip = c.Get("X-Forwarded-For")
+	}
+
+	// Llamar al servicio para crear o hacer login del usuario
+	// Ahora el servicio se encarga de validar el state ANTES de persistir
+	jwtToken, refreshToken, err := h.service.OAuthCreateOrLogin(oauthInput)
+	if err != nil {
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		return api_error.InternalServerError("Authentication failed").WithErr(err)
+	}
+
+	// Setear cookies con los tokens
+	cookie.SetAuthTokenCookie(c, jwtToken)
+	cookie.SetRefreshTokenCookie(c, refreshToken)
+
+	// Retornar respuesta exitosa
+	return c.JSON(fiber.Map{
+		"success":  true,
+		"message":  "login successful",
+		"provider": provider,
 	})
 }

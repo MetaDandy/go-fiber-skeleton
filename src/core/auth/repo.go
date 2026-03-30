@@ -19,6 +19,16 @@ type Repo interface {
 	CreateAuthLog(al model.AuthLog) error
 	SavePasswordResetTokenWithLog(prt model.PasswordResetToken, al model.AuthLog) error
 	CompletePasswordReset(userID string, passwordHash string, al model.AuthLog) error
+	CreateOAuthUser(u model.User, al model.AuthLog, ap model.AuthProvider, state string) error
+	GetOAuthProvider(userID uuid.UUID, provider string) error
+	AddOAuthProviderToUser(userID uuid.UUID, ap model.AuthProvider, al model.AuthLog, state string, provider string) error
+	SaveOAuthState(state, provider string) error
+	ValidateOAuthState(state, provider string) error
+	GetOAuthProviderByState(state string) (string, error)
+	CreateSession(session model.Session) error
+	GetSessionByHash(hash string) (model.Session, error)
+	RevokeSession(id uuid.UUID) error
+	RevokeAllUserSessions(userID uuid.UUID) error
 }
 
 type repo struct {
@@ -139,4 +149,124 @@ func (r *repo) CompletePasswordReset(userID string, passwordHash string, al mode
 
 		return nil
 	})
+}
+
+// CreateOAuthUser crea un nuevo usuario con OAuth: user + authlog + authprovider + consumo de state
+// Operación transaccional - rollback si algo falla, incluyendo la invalidación del state
+func (r *repo) CreateOAuthUser(u model.User, al model.AuthLog, ap model.AuthProvider, state string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// 1. Consumir el state (atómico)
+		if err := tx.Model(&model.OAuthState{}).
+			Where("state = ? AND provider = ? AND deleted_at IS NULL", state, ap.Provider).
+			Update("deleted_at", time.Now()).Error; err != nil {
+			return err
+		}
+
+		// 2. Crear usuario
+		if err := tx.Create(&u).Error; err != nil {
+			return err
+		}
+
+		// 3. Crear auth log
+		if err := tx.Create(&al).Error; err != nil {
+			return err
+		}
+
+		// 4. Crear auth provider
+		if err := tx.Create(&ap).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
+// GetOAuthProvider busca si un usuario tiene un proveedor específico
+// Retorna nil si existe, gorm.ErrRecordNotFound si no existe
+func (r *repo) GetOAuthProvider(userID uuid.UUID, provider string) error {
+	return r.db.Where("user_id = ? AND provider = ?", userID, provider).First(&model.AuthProvider{}).Error
+}
+
+// AddOAuthProviderToUser agrega un nuevo proveedor OAuth a un usuario existente y consume el state
+// Transacción: consume state + agrega provider + crea log
+func (r *repo) AddOAuthProviderToUser(userID uuid.UUID, ap model.AuthProvider, al model.AuthLog, state string, provider string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// 1. Consumir el state (atómico)
+		if err := tx.Model(&model.OAuthState{}).
+			Where("state = ? AND provider = ? AND deleted_at IS NULL", state, provider).
+			Update("deleted_at", time.Now()).Error; err != nil {
+			return err
+		}
+
+		// 2. Crear auth provider
+		if err := tx.Create(&ap).Error; err != nil {
+			return err
+		}
+
+		// 3. Crear auth log
+		if err := tx.Create(&al).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
+// SaveOAuthState guarda un estado de OAuth temporal para CSRF protection
+func (r *repo) SaveOAuthState(state, provider string) error {
+	oauthState := model.OAuthState{
+		ID:        uuid.New(),
+		State:     state,
+		Provider:  provider,
+		ExpiresAt: time.Now().Add(15 * time.Minute),
+	}
+	return r.db.Create(&oauthState).Error
+}
+
+// ValidateOAuthState valida un estado de OAuth y lo consume (one-time use)
+// Retorna nil si válido, error si inválido/expirado/no encontrado
+func (r *repo) ValidateOAuthState(state, provider string) error {
+	var oauthState model.OAuthState
+
+	// Buscar el estado y validar que no esté expirado
+	if err := r.db.Where("state = ? AND provider = ? AND expires_at > ? AND deleted_at IS NULL",
+		state, provider, time.Now()).
+		First(&oauthState).Error; err != nil {
+		return err
+	}
+
+	// Marcar como consumido (soft delete)
+	return r.db.Model(&oauthState).Update("deleted_at", time.Now()).Error
+}
+
+// GetOAuthProviderByState retorna el provider asociado a un state válido
+func (r *repo) GetOAuthProviderByState(state string) (string, error) {
+	var oauthState model.OAuthState
+
+	// Buscar el estado y validar que no esté expirado
+	if err := r.db.Where("state = ? AND expires_at > ? AND deleted_at IS NULL",
+		state, time.Now()).
+		First(&oauthState).Error; err != nil {
+		return "", err
+	}
+
+	return oauthState.Provider, nil
+}
+
+func (r *repo) CreateSession(session model.Session) error {
+	return r.db.Create(&session).Error
+}
+
+func (r *repo) GetSessionByHash(hash string) (model.Session, error) {
+	var session model.Session
+	err := r.db.Where("refresh_token_hash = ? AND revoked_at IS NULL", hash).First(&session).Error
+	return session, err
+}
+
+func (r *repo) RevokeSession(id uuid.UUID) error {
+	return r.db.Model(&model.Session{}).Where("id = ?", id).Update("revoked_at", time.Now()).Error
+}
+
+func (r *repo) RevokeAllUserSessions(userID uuid.UUID) error {
+	return r.db.Model(&model.Session{}).Where("user_id = ? AND revoked_at IS NULL", userID).Update("revoked_at", time.Now()).Error
 }

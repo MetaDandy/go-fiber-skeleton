@@ -98,3 +98,28 @@ func (l LoginPassword) Validate() error {
 	}
 	return nil
 }
+
+// OAuth DTOs
+
+type OAuthUserInfo struct {
+	ID    string // provider_user_id
+	Email string
+	Name  string
+	Image string
+}
+
+type OAuthCallback struct {
+	Code  string `json:"code" validate:"required"`
+	State string `json:"state" validate:"required"`
+	Ip    string
+	UserAgent string
+}
+
+// OAuthCallbackInternal es el DTO interno después de procesar el callback
+type OAuthCallbackInternal struct {
+	Provider  string
+	State     string // State original para validación y consumo atómico
+	UserInfo  OAuthUserInfo
+	Ip        string
+	UserAgent string
+}

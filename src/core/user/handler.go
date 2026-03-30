@@ -1,16 +1,8 @@
 package user
 
 import (
-	"context"
-	"fmt"
-	"math/rand"
-	"strings"
-	"time"
-
 	"github.com/MetaDandy/go-fiber-skeleton/api_error"
 	"github.com/MetaDandy/go-fiber-skeleton/helper"
-	"github.com/MetaDandy/go-fiber-skeleton/src/enum"
-	"github.com/MetaDandy/go-fiber-skeleton/src/service/auth"
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -21,8 +13,6 @@ type Handler interface {
 	FindByID(c fiber.Ctx) error
 	Update(c fiber.Ctx) error
 	Delete(c fiber.Ctx) error
-	OAuthLogin(c fiber.Ctx) error
-	OAuthCallback(c fiber.Ctx) error
 }
 
 type handler struct {
@@ -35,16 +25,6 @@ func NewHandler(service Service) Handler {
 	}
 }
 
-// generateState genera un estado aleatorio para CSRF protection
-func generateState() string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	state := make([]byte, 32)
-	for i := range state {
-		state[i] = charset[rand.Intn(len(charset))]
-	}
-	return string(state)
-}
-
 func (h *handler) RegisterRoutes(router fiber.Router) {
 	users := router.Group("/users")
 	users.Post("/", h.Create)
@@ -52,10 +32,6 @@ func (h *handler) RegisterRoutes(router fiber.Router) {
 	users.Get("/:id", h.FindByID)
 	users.Patch("/:id", h.Update)
 	users.Delete("/:id", h.Delete)
-
-	auth := router.Group("/auth")
-	auth.Get("/login/:provider", h.OAuthLogin)
-	auth.Get("/callback", h.OAuthCallback)
 }
 
 func (h *handler) Create(c fiber.Ctx) error {
@@ -130,151 +106,4 @@ func (h *handler) Delete(c fiber.Ctx) error {
 		return api_error.InternalServerError("Could not delete user").WithErr(err)
 	}
 	return c.Status(fiber.StatusNoContent).Send(nil)
-}
-
-// OAuthLogin inicia el flujo de login OAuth
-func (h *handler) OAuthLogin(c fiber.Ctx) error {
-	provider := c.Params("provider")
-
-	fmt.Printf("\n========================================\n")
-	fmt.Printf("🔐 [OAuth Login] RAW Params:\n")
-	fmt.Printf("   Provider recibido: %s\n", provider)
-	fmt.Printf("   Bytes: %v\n", []byte(provider))
-	fmt.Printf("   Length: %d\n", len(provider))
-	fmt.Printf("   URL actual: %s\n", c.OriginalURL())
-	fmt.Printf("========================================\n\n")
-
-	// Validar proveedor
-	if !enum.IsValidAuthProvider(provider) {
-		return api_error.BadRequest("Unsupported oauth provider")
-	}
-
-	// Cargar credenciales
-	creds, err := auth.LoadCredentials(provider)
-	if err != nil {
-		return api_error.InternalServerError("Could not load provider credentials").WithErr(err)
-	}
-
-	// Generar estado para CSRF
-	state := generateState()
-
-	// Guardar estado + provider en cookie con SameSite=Lax para desarrollo
-	c.Cookie(&fiber.Cookie{
-		Name:     "oauth_state",
-		Value:    fmt.Sprintf("%s:%s", state, provider), // Format: state:provider
-		Expires:  time.Now().Add(15 * time.Minute),
-		Path:     "/",
-		SameSite: "Lax",
-		HTTPOnly: true,
-	})
-
-	// Construir redirect URL
-	redirectURL := fmt.Sprintf("%s/api/v1/auth/callback", c.BaseURL())
-
-	// Obtener URL de autorización
-	authURL, err := auth.GetAuthURL(provider, creds, redirectURL, state)
-	if err != nil {
-		return api_error.InternalServerError("Could not generate auth URL").WithErr(err)
-	}
-
-	fmt.Printf("🔐 [OAuth Login] Provider: %s\n", provider)
-	fmt.Printf("📍 Auth URL: %s\n", authURL)
-	fmt.Printf("🔒 State: %s\n\n", state)
-
-	return c.Redirect().To(authURL)
-}
-
-// OAuthCallback maneja el callback de OAuth
-func (h *handler) OAuthCallback(c fiber.Ctx) error {
-	code := c.Query("code")
-	state := c.Query("state")
-
-	if code == "" || state == "" {
-		return api_error.BadRequest("Missing required parameters: code or state")
-	}
-
-	// Obtener cookie con state:provider
-	cookieValue := c.Cookies("oauth_state")
-	if cookieValue == "" {
-		fmt.Printf("❌ [OAuth Callback] Cookie no encontrada\n\n")
-		return api_error.BadRequest("OAuth state cookie not found")
-	}
-
-	// Parse: state:provider de la cookie
-	parts := strings.Split(cookieValue, ":")
-	if len(parts) != 2 {
-		fmt.Printf("❌ [OAuth Callback] Cookie formato inválido\n\n")
-		return api_error.BadRequest("Invalid oauth state cookie format")
-	}
-
-	cookieState := parts[0]
-	provider := parts[1]
-
-	// Validar state
-	if cookieState != state {
-		fmt.Printf("❌ [OAuth Callback] CSRF validation failed\n")
-		fmt.Printf("   Expected: %s\n", cookieState)
-		fmt.Printf("   Got: %s\n\n", state)
-		return api_error.BadRequest("CSRF state validation failed")
-	}
-
-	fmt.Printf("✓ [OAuth Callback] State validado - Provider: %s\n", provider)
-
-	// Cargar credenciales
-	creds, err := auth.LoadCredentials(provider)
-	if err != nil {
-		return api_error.InternalServerError("Could not load provider credentials").WithErr(err)
-	}
-
-	// Construir redirect URL
-	redirectURL := fmt.Sprintf("%s/api/v1/auth/callback", c.BaseURL())
-
-	// Intercambiar código por token
-	token, err := auth.ExchangeCode(provider, creds, redirectURL, code)
-	if err != nil {
-		fmt.Printf("❌ [OAuth Callback] Failed to exchange code: %v\n\n", err)
-		return api_error.InternalServerError("Failed to exchange authorization code").WithErr(err)
-	}
-
-	// Obtener información del usuario
-	userInfo, err := auth.GetUserInfo(context.Background(), provider, token)
-	if err != nil {
-		fmt.Printf("❌ [OAuth Callback] Failed to get user info: %v\n\n", err)
-		return api_error.InternalServerError("Failed to retrieve user information").WithErr(err)
-	}
-
-	// Mostrar información completa en consola
-	fmt.Println(strings.Repeat("=", 60))
-	fmt.Printf("✅ [OAuth Callback] Autenticación exitosa\n")
-	fmt.Printf("🔐 Provider: %s\n", provider)
-	fmt.Println(strings.Repeat("-", 60))
-	fmt.Printf("👤 Información del Usuario:\n")
-	fmt.Printf("   ID: %s\n", userInfo.ID)
-	fmt.Printf("   Email: %s\n", userInfo.Email)
-	fmt.Printf("   Nombre: %s\n", userInfo.Name)
-	fmt.Printf("   Imagen: %s\n", userInfo.Image)
-	fmt.Println(strings.Repeat("-", 60))
-	fmt.Printf("🔑 Token:\n")
-	fmt.Printf("   Access Token: %s\n", token.AccessToken[:20]+"...")
-	fmt.Printf("   Token Type: %s\n", token.TokenType)
-	fmt.Printf("   Expiry: %v\n", token.Expiry)
-	fmt.Println(strings.Repeat("=", 60))
-	fmt.Println()
-
-	// Retornar información del usuario
-	return c.JSON(fiber.Map{
-		"success":  true,
-		"provider": provider,
-		"user": fiber.Map{
-			"id":    userInfo.ID,
-			"email": userInfo.Email,
-			"name":  userInfo.Name,
-			"image": userInfo.Image,
-		},
-		"token": fiber.Map{
-			"access_token": token.AccessToken,
-			"token_type":   token.TokenType,
-			"expiry":       token.Expiry,
-		},
-	})
 }

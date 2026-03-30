@@ -14,7 +14,7 @@ type User struct {
 	EmailVerified   bool
 	EmailVerifiedAt *time.Time
 	Phone           string
-	Password        string
+	Password        *string
 	Picture         string
 
 	RoleID uuid.UUID `gorm:"type:uuid;"`
