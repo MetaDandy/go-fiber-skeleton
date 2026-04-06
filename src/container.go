@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/MetaDandy/go-fiber-skeleton/config"
+	"github.com/MetaDandy/go-fiber-skeleton/middleware"
 	permission "github.com/MetaDandy/go-fiber-skeleton/src/core/Permission"
 	authentication "github.com/MetaDandy/go-fiber-skeleton/src/core/auth"
 	"github.com/MetaDandy/go-fiber-skeleton/src/core/role"
@@ -12,6 +13,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+var AuthMiddleware fiber.Handler
+
 type Container struct {
 	Handlers []interface {
 		RegisterRoutes(fiber.Router)
@@ -19,7 +22,6 @@ type Container struct {
 }
 
 func SetupContainer() *Container {
-	// Setup mail service (agnóstico - Mailpit o Resend)
 	mailService, err := mail.NewEmailService()
 	if err != nil {
 		log.Fatalf("Failed to initialize mail service: %v", err)
@@ -27,11 +29,15 @@ func SetupContainer() *Container {
 
 	userRepo := user.NewRepo(config.DB)
 	userService := user.NewService(userRepo)
-	userHandler := user.NewHandler(userService)
 
 	authRepo := authentication.NewRepo(config.DB)
 	authService := authentication.NewService(authRepo, userRepo, mailService)
-	authHandler := authentication.NewHandler(authService)
+
+	AuthMiddleware = middleware.Jwt(authService)
+
+	authHandler := authentication.NewHandler(authService, AuthMiddleware)
+
+	userHandler := user.NewHandler(userService)
 
 	permissionRepo := permission.NewRepo(config.DB)
 	permissionService := permission.NewService(permissionRepo)
