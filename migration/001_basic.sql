@@ -9,7 +9,7 @@ CREATE TABLE Roles (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP WITH TIME ZONE,
-    FOREIGN KEY (role_id) REFERENCES Roles(id) ON UPDATE CASCADE ON DELETE SET NULL
+    FOREIGN KEY (role_id) REFERENCES roles(id) ON UPDATE CASCADE ON DELETE SET NULL
 );
 
 CREATE TABLE Permissions (
@@ -44,19 +44,21 @@ CREATE TABLE RolePermissions (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP WITH TIME ZONE,
-    FOREIGN KEY (role_id) REFERENCES Roles(id) ON UPDATE CASCADE ON DELETE SET NULL,
-    FOREIGN KEY (permission_id) REFERENCES Permissions(id) ON UPDATE CASCADE ON DELETE SET NULL
+    FOREIGN KEY (role_id) REFERENCES roles(id) ON UPDATE CASCADE ON DELETE SET NULL,
+    FOREIGN KEY (permission_id) REFERENCES permissions(id) ON UPDATE CASCADE ON DELETE SET NULL
 );
 
 CREATE TABLE RoleEffectivePermissions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    role_id UUID,
-    permission_id TEXT,
+    role_id UUID NOT NULL,
+    source_role_id UUID NOT NULL,
+    permission_id TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP WITH TIME ZONE,
-    FOREIGN KEY (role_id) REFERENCES Roles(id) ON UPDATE CASCADE ON DELETE SET NULL,
-    FOREIGN KEY (permission_id) REFERENCES Permissions(id) ON UPDATE CASCADE ON DELETE SET NULL
+    FOREIGN KEY (role_id) REFERENCES roles(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (source_role_id) REFERENCES roles(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (permission_id) REFERENCES permissions(id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
 CREATE TABLE UserPermissions (
@@ -66,7 +68,7 @@ CREATE TABLE UserPermissions (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP WITH TIME ZONE,
-    FOREIGN KEY (permission_id) REFERENCES Permissions(id) ON UPDATE CASCADE ON DELETE SET NULL,
+    FOREIGN KEY (permission_id) REFERENCES permissions(id) ON UPDATE CASCADE ON DELETE SET NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE SET NULL
 );
 
@@ -115,7 +117,7 @@ CREATE TABLE PasswordResetTokens (
     FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE SET NULL
 );
 
-CREATE TABLE sessions (
+CREATE TABLE Sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     provider TEXT,
     refresh_token_hash TEXT,
@@ -134,17 +136,18 @@ CREATE TABLE UserRoles (
     user_id UUID NOT NULL,
     role_id UUID NOT NULL,
     PRIMARY KEY (user_id, role_id),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    FOREIGN KEY (role_id) REFERENCES Roles(id) ON UPDATE CASCADE ON DELETE CASCADE
+    FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE SET NULL,
+    FOREIGN KEY (role_id) REFERENCES roles(id) ON UPDATE CASCADE ON DELETE SET NULL
 );
 
 
 -- Indexes
 CREATE INDEX idx_users_deleted_at ON users(deleted_at);
 CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_roles_deleted_at ON Roles(deleted_at);
-CREATE INDEX idx_permissions_deleted_at ON Permissions(deleted_at);
+CREATE INDEX idx_roles_deleted_at ON roles(deleted_at);
+CREATE INDEX idx_permissions_deleted_at ON permissions(deleted_at);
 CREATE INDEX idx_sessions_deleted_at ON sessions(deleted_at);
+CREATE INDEX idx_roleeffectivepermissions_source_role_id ON roleeffectivepermissions(source_role_id);
 
 -- +goose Down
 DROP TABLE IF EXISTS UserRoles;

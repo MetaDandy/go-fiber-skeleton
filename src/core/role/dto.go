@@ -14,6 +14,7 @@ type UpdateHeader struct {
 }
 
 type UpdateDetails struct {
-	Add    []string `json:"add"`
-	Remove []string `json:"remove"`
+	Add        []string `json:"add"`
+	Remove     []string `json:"remove"`
+	StrictMode bool     `json:"strict_mode"`
 }

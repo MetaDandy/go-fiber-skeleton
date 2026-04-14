@@ -1,7 +1,7 @@
 meta {
   name: UpdateDetails
   type: http
-  seq: 4
+  seq: 3
 }
 
 patch {
@@ -11,18 +11,21 @@ patch {
 }
 
 params:path {
-  id: 6509b9ce-242a-4770-8545-f0d6a0652b4a
+  id: 61cccfc4-166b-45c7-bb0f-840a5387dce0
 }
 
 body:json {
   {
     "add": [
-      "permission.read",
-      "permission.list"
+       "permission.read",
+      "permission.list" ,
+      "role.create"
     ],
     "remove": [
-      "role.create"
-    ]
+      // 
+       
+    ],
+  "strict_mode": true
   }
 }
 

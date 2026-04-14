@@ -10,11 +10,14 @@ import (
 type RoleEffectivePermission struct {
 	ID uuid.UUID `gorm:"type:uuid;primaryKey;"`
 
-	RoleID uuid.UUID `gorm:"type:uuid;"`
-	Role   Role      `gorm:"foreignKey:RoleID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
+	RoleID uuid.UUID `gorm:"type:uuid;index;not null"`
+	Role   Role      `gorm:"foreignKey:RoleID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 
-	PermissionID string     `gorm:"type:varchar(255);"`
-	Permission   Permission `gorm:"foreignKey:PermissionID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
+	SourceRoleID uuid.UUID `gorm:"type:uuid;index;not null"`
+	SourceRole   Role      `gorm:"foreignKey:SourceRoleID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+
+	PermissionID string     `gorm:"type:varchar(255);index;not null"`
+	Permission   Permission `gorm:"foreignKey:PermissionID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
