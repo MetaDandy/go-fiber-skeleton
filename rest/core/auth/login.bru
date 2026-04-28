@@ -1,17 +1,17 @@
 meta {
-  name: FindById
+  name: login
   type: http
-  seq: 4
+  seq: 11
 }
 
 get {
-  url: {{url}}/roles/:id
+  url: {{url}}/auth/login/:provider
   body: none
   auth: inherit
 }
 
 params:path {
-  id: 61cccfc4-166b-45c7-bb0f-840a5387dce0
+  provider: google
 }
 
 settings {

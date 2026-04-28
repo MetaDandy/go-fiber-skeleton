@@ -56,15 +56,6 @@ func UnprocessableEntity(message string) *Error {
 	)
 }
 
-// TooManyRequests retorna error 429 - Demasiadas solicitudes
-func TooManyRequests(message string) *Error {
-	return NewError(
-		ErrTooManyRequests,
-		message,
-		fiber.StatusTooManyRequests,
-	)
-}
-
 // InternalServerError retorna error 500 - Error interno
 func InternalServerError(message string) *Error {
 	return NewError(
@@ -89,5 +80,14 @@ func ServiceUnavailable(message string) *Error {
 		ErrServiceUnavailable,
 		message,
 		fiber.StatusServiceUnavailable,
+	)
+}
+
+// TooManyRequests retorna error 429
+func TooManyRequests(message string) *Error {
+	return NewError(
+		ErrTooManyRequests,
+		message,
+		fiber.StatusTooManyRequests,
 	)
 }

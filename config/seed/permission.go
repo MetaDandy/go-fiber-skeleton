@@ -25,6 +25,16 @@ var permissionModules = []model.Permission{
 		Name:        "Permiso para crear un rol",
 		Description: "Permiso para crear un rol específico",
 	},
+	{
+		ID:          enum.UserPermissionCreate.String(),
+		Name:        "Permiso para asignar permiso directo a usuario",
+		Description: "Permiso para crear user_permission",
+	},
+	{
+		ID:          enum.UserPermissionRead.String(),
+		Name:        "Permiso para leer permisos de usuario",
+		Description: "Permiso para leer user_permission",
+	},
 }
 
 func verifyAndCreatePermissions(db *gorm.DB, permissions []model.Permission) ([]model.Permission, error) {

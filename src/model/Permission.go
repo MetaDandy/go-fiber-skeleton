@@ -12,8 +12,8 @@ type Permission struct {
 	Name        string
 
 	UserPermissions          []UserPermission          `gorm:"foreignKey:PermissionID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
-	RolePermissions          []RoleEffectivePermission `gorm:"foreignKey:PermissionID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
-	RoleEffectivePermissions []RoleEffectivePermission `gorm:"foreignKey:PermissionID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
+	RolePermissions          []RolePermission          `gorm:"foreignKey:PermissionID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	RoleEffectivePermissions []RoleEffectivePermission `gorm:"foreignKey:PermissionID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

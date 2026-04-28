@@ -448,8 +448,18 @@ func (s *service) LoginPassword(input LoginPassword) (string, string, error) {
 		return "", "", api_error.Forbidden("Please verify your email before logging in")
 	}
 
+	permissions, err := s.repo.GetUserPermissions(user.ID.String())
+	if err != nil {
+		log.Printf("failed to retrieve user permissions: %v", err)
+		return "", "", api_error.InternalServerError("Failed to retrieve permissions").WithErr(err)
+	}
+
 	// Generar tokens
-	accessToken, err := helper.GenerateJwt(user.ID.String(), user.Email, user.RoleID.String())
+	var roleIDStr string
+	if user.RoleID != uuid.Nil {
+		roleIDStr = user.RoleID.String()
+	}
+	accessToken, err := helper.GenerateJwt(user.ID.String(), user.Email, roleIDStr, permissions)
 	if err != nil {
 		log.Printf("failed to generate JWT token: %v", err)
 		return "", "", api_error.InternalServerError("Failed to generate access token").WithErr(err)
@@ -640,7 +650,18 @@ func (s *service) oauthLogin(input OAuthCallbackInternal, user model.User) (stri
 
 // generateAndSaveSession es un helper para centralizar la creación de tokens y sesión
 func (s *service) generateAndSaveSession(user model.User, provider, ip, userAgent string) (string, string, error) {
-	accessToken, err := helper.GenerateJwt(user.ID.String(), user.Email, user.RoleID.String())
+	permissions, err := s.repo.GetUserPermissions(user.ID.String())
+	if err != nil {
+		log.Printf("failed to get user permissions: %v", err)
+		return "", "", api_error.InternalServerError("Failed to get user permissions").WithErr(err)
+	}
+
+	var roleIDStr string
+	if user.RoleID != uuid.Nil {
+		roleIDStr = user.RoleID.String()
+	}
+
+	accessToken, err := helper.GenerateJwt(user.ID.String(), user.Email, roleIDStr, permissions)
 	if err != nil {
 		log.Printf("failed to generate access token: %v", err)
 		return "", "", api_error.InternalServerError("Failed to generate access token").WithErr(err)
@@ -725,8 +746,18 @@ func (s *service) RefreshToken(refreshToken, ip, userAgent string) (string, stri
 		return "", "", api_error.Unauthorized("User not found")
 	}
 
+	permissions, err := s.repo.GetUserPermissions(user.ID.String())
+	if err != nil {
+		return "", "", api_error.InternalServerError("Failed to get user permissions")
+	}
+
+	var roleIDStr string
+	if user.RoleID != uuid.Nil {
+		roleIDStr = user.RoleID.String()
+	}
+
 	// 5. ROTACIÓN: Generar nuevos tokens y reemplazar la sesión
-	accessToken, err := helper.GenerateJwt(user.ID.String(), user.Email, user.RoleID.String())
+	accessToken, err := helper.GenerateJwt(user.ID.String(), user.Email, roleIDStr, permissions)
 	if err != nil {
 		return "", "", api_error.InternalServerError("Failed to generate access token")
 	}

@@ -11,6 +11,7 @@ type RoleEffectivePermission struct {
 	ID string `json:"id"`
 
 	RoleID       string `json:"role_id"`
+	SourceRoleID string `json:"source_role_id"`
 	PermissionID string `json:"permission_id"`
 
 	CreatedAt string `json:"created_at"`
@@ -23,6 +24,7 @@ func RoleEffectivePermissionToDto(m *model.RoleEffectivePermission) RoleEffectiv
 	dto.ID = m.ID.String()
 
 	dto.RoleID = m.RoleID.String()
+	dto.SourceRoleID = m.SourceRoleID.String()
 	dto.PermissionID = m.PermissionID
 
 	dto.CreatedAt = m.CreatedAt.Format(time.RFC3339)

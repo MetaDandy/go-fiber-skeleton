@@ -4,12 +4,15 @@ import (
 	"context"
 	"math/rand"
 	"os"
+	"time"
 
 	"github.com/MetaDandy/go-fiber-skeleton/api_error"
+	"github.com/MetaDandy/go-fiber-skeleton/helper"
 	"github.com/MetaDandy/go-fiber-skeleton/src/enum"
 	"github.com/MetaDandy/go-fiber-skeleton/src/service/auth"
 	"github.com/MetaDandy/go-fiber-skeleton/src/service/cookie"
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"github.com/google/uuid"
 )
 
@@ -30,30 +33,43 @@ type Handler interface {
 }
 
 type handler struct {
-	service Service
+	service   Service
+	jwtMiddle fiber.Handler
 }
 
-func NewHandler(service Service) Handler {
+func NewHandler(service Service, jwtMiddle fiber.Handler) Handler {
 	return &handler{
-		service: service,
+		service:   service,
+		jwtMiddle: jwtMiddle,
 	}
 }
 
 func (h *handler) RegisterRoutes(router fiber.Router) {
+	authRateLimiter := limiter.New(limiter.Config{
+		Max:        5,
+		Expiration: 15 * time.Minute,
+		LimitReached: func(c fiber.Ctx) error {
+			return api_error.TooManyRequests("Too many requests from this IP, please try again later")
+		},
+	})
+
 	auth := router.Group("/auth")
 	auth.Get("/providers/:email", h.UserAuthProviders)
 	auth.Post("/signup", h.SignUpPassword)
-	auth.Post("/signin", h.LoginPassword)
+	auth.Post("/signin", authRateLimiter, h.LoginPassword)
 	auth.Post("/refresh", h.RefreshToken)
-	auth.Post("/logout", h.Logout)
 	auth.Post("/send-test-email", h.SendTestEmail)
 	auth.Get("/verify-email/:token", h.VerifyEmail)
 	auth.Get("/resend-verification-email/:email", h.ResendVerificationEmail)
-	auth.Post("/forgot-password", h.ForgotPassword)
+	auth.Post("/forgot-password", authRateLimiter, h.ForgotPassword)
 	auth.Post("/reset-password", h.ResetPassword)
-	auth.Post("/change-password/:userID", h.ChangePassword) // Requiere JWT middleware
 	auth.Get("/login/:provider", h.OAuthLogin)
 	auth.Get("/callback", h.OAuthCallback)
+
+	protected := auth.Group("/", h.jwtMiddle)
+	protected.Post("/change-password", h.ChangePassword)
+
+	auth.Post("/logout", h.Logout)
 }
 
 func (h *handler) UserAuthProviders(c fiber.Ctx) error {
@@ -107,14 +123,8 @@ func (h *handler) LoginPassword(c fiber.Ctx) error {
 		return api_error.BadRequest("Invalid request body")
 	}
 
-	// Extraer IP del contexto/header
-	input.Ip = c.IP()
-	if input.Ip == "" {
-		input.Ip = c.Get("X-Forwarded-For")
-	}
-
-	// Extraer User-Agent
-	input.UserAgent = c.Get("User-Agent")
+	// Extraer IP y User-Agent del contexto
+	input.Ip, input.UserAgent = helper.GetClientDetails(c)
 
 	if err := input.Validate(); err != nil {
 		return err
@@ -144,8 +154,7 @@ func (h *handler) RefreshToken(c fiber.Ctx) error {
 		return api_error.Unauthorized("No refresh token provided")
 	}
 
-	ip := c.IP()
-	userAgent := c.Get("User-Agent")
+	ip, userAgent := helper.GetClientDetails(c)
 
 	// 2. Llamar al servicio para rotar el token
 	newToken, newRefreshToken, err := h.service.RefreshToken(refreshToken, ip, userAgent)
@@ -313,24 +322,16 @@ func (h *handler) ChangePassword(c fiber.Ctx) error {
 		return err
 	}
 
-	// TODO: Implementar JWT middleware completo
-	// Por ahora, recibir user_id por query parameter o header para testing
-	// Cuando el middleware JWT esté listo, descomentar:
-	// userID, ok := c.Locals("user_id").(string)
-	// if !ok || userID == "" {
-	//     return api_error.Unauthorized("User not authenticated")
-	// }
-
-	// Recibir user_id temporalmente por header o query
-	userID := c.Params("userID")
-	if userID == "" {
-		return api_error.BadRequest("user_id is required (X-User-ID header or user_id query parameter)")
+	// Obtener userID desde el middleware JWT
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok || userIDStr == "" {
+		return api_error.Unauthorized("User not authenticated")
 	}
 
 	// Validar que sea un UUID válido
-	uid, err := uuid.Parse(userID)
+	uid, err := uuid.Parse(userIDStr)
 	if err != nil {
-		return api_error.BadRequest("Invalid user ID format")
+		return api_error.BadRequest("Invalid user ID format in session")
 	}
 
 	// Extraer IP y User-Agent
