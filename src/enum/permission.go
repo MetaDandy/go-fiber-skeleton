@@ -22,6 +22,11 @@ var (
 
 	AuthLogRead Permission = "authLog.read"
 	AuthLogList Permission = "authLog.list"
+
+	UserPermissionCreate Permission = "userPermission.create"
+	UserPermissionRead   Permission = "userPermission.read"
+	UserPermissionDelete Permission = "userPermission.delete"
+	UserPermissionList   Permission = "userPermission.list"
 )
 
 func (m Permission) IsValid() bool {
@@ -30,7 +35,8 @@ func (m Permission) IsValid() bool {
 		UserCreate, UserUpdate, UserDelete, UserList,
 		RoleCreate, RoleUpdate, RoleList,
 		SessionList, SessionRevoke, SessionRevokeAll,
-		AuthLogRead, AuthLogList:
+		AuthLogRead, AuthLogList,
+		UserPermissionCreate, UserPermissionRead, UserPermissionDelete, UserPermissionList:
 
 		return true
 	}
@@ -58,5 +64,9 @@ func PermissionToArray() []string {
 		string(SessionRevokeAll),
 		string(AuthLogRead),
 		string(AuthLogList),
+		string(UserPermissionCreate),
+		string(UserPermissionRead),
+		string(UserPermissionDelete),
+		string(UserPermissionList),
 	}
 }

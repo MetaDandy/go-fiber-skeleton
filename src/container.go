@@ -9,6 +9,7 @@ import (
 	authentication "github.com/MetaDandy/go-fiber-skeleton/src/core/auth"
 	"github.com/MetaDandy/go-fiber-skeleton/src/core/role"
 	"github.com/MetaDandy/go-fiber-skeleton/src/core/user"
+	"github.com/MetaDandy/go-fiber-skeleton/src/core/user_permission"
 	"github.com/MetaDandy/go-fiber-skeleton/src/service/mail"
 	"github.com/gofiber/fiber/v3"
 )
@@ -47,6 +48,10 @@ func SetupContainer() *Container {
 	roleService := role.NewService(roleRepo, role.PermissionChecker(permissionService))
 	roleHandler := role.NewHandler(roleService)
 
+	userPermissionRepo := user_permission.NewRepo(config.DB)
+	userPermissionService := user_permission.NewService(userPermissionRepo, user_permission.PermissionChecker(permissionService))
+	userPermissionHandler := user_permission.NewHandler(userPermissionService)
+
 	return &Container{
 		Handlers: []interface {
 			RegisterRoutes(fiber.Router)
@@ -55,6 +60,7 @@ func SetupContainer() *Container {
 			authHandler,
 			permissionHandler,
 			roleHandler,
+			userPermissionHandler,
 		},
 	}
 }
