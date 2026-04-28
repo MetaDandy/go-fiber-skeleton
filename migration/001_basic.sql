@@ -121,10 +121,10 @@ CREATE TABLE Sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     provider TEXT,
     refresh_token_hash TEXT,
-    expires_at TEXT,
+    expires_at TIMESTAMP WITH TIME ZONE,
     ip TEXT,
     user_agent TEXT,
-    revoked_at TEXT,
+    revoked_at TIMESTAMP WITH TIME ZONE,
     user_id UUID,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -140,16 +140,58 @@ CREATE TABLE UserRoles (
     FOREIGN KEY (role_id) REFERENCES roles(id) ON UPDATE CASCADE ON DELETE SET NULL
 );
 
+CREATE TABLE oauth_states (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    state TEXT NOT NULL UNIQUE,
+    provider TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    deleted_at TIMESTAMP WITH TIME ZONE
+);
+
 
 -- Indexes
-CREATE INDEX idx_users_deleted_at ON users(deleted_at);
+-- Indexes for users table
 CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_deleted_at ON users(deleted_at);
+CREATE INDEX idx_users_email_verified ON users(email_verified);
+
+-- Indexes for authentication lookup (critical for token verification)
+CREATE INDEX idx_email_verification_tokens_token_hash ON EmailVerificationTokens(token_hash);
+CREATE INDEX idx_email_verification_tokens_user_id ON EmailVerificationTokens(user_id);
+CREATE INDEX idx_email_verification_tokens_created_at ON EmailVerificationTokens(created_at DESC);
+CREATE INDEX idx_password_reset_tokens_token_hash ON PasswordResetTokens(token_hash);
+CREATE INDEX idx_password_reset_tokens_user_id ON PasswordResetTokens(user_id);
+CREATE INDEX idx_password_reset_tokens_created_at ON PasswordResetTokens(created_at DESC);
+
+-- Indexes for audit logs (frequent inserts and searches)
+CREATE INDEX idx_auth_logs_user_id ON AuthLogs(user_id);
+CREATE INDEX idx_auth_logs_created_at ON AuthLogs(created_at DESC);
+CREATE INDEX idx_auth_logs_event ON AuthLogs(event);
+CREATE INDEX idx_auth_logs_user_id_created_at ON AuthLogs(user_id, created_at DESC);
+CREATE INDEX idx_auth_logs_ip ON AuthLogs(ip);
+
+-- Indexes for relationships and constraints
 CREATE INDEX idx_roles_deleted_at ON roles(deleted_at);
 CREATE INDEX idx_permissions_deleted_at ON permissions(deleted_at);
+CREATE INDEX idx_auth_providers_user_id ON AuthProviders(user_id);
+CREATE INDEX idx_auth_providers_provider ON AuthProviders(provider);
+CREATE INDEX idx_user_permissions_user_id ON UserPermissions(user_id);
+CREATE INDEX idx_user_permissions_permission_id ON UserPermissions(permission_id);
+CREATE INDEX idx_role_permissions_role_id ON RolePermissions(role_id);
+CREATE INDEX idx_role_permissions_permission_id ON RolePermissions(permission_id);
 CREATE INDEX idx_sessions_deleted_at ON sessions(deleted_at);
+CREATE INDEX idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX idx_sessions_created_at ON sessions(created_at DESC);
+
+-- Indexes for OAuth states
+CREATE INDEX idx_oauth_states_state ON oauth_states(state);
+CREATE INDEX idx_oauth_states_provider ON oauth_states(provider);
+CREATE INDEX idx_oauth_states_expires_at ON oauth_states(expires_at);
 CREATE INDEX idx_roleeffectivepermissions_source_role_id ON roleeffectivepermissions(source_role_id);
 
 -- +goose Down
+DROP TABLE IF EXISTS oauth_states;
 DROP TABLE IF EXISTS UserRoles;
 DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS PasswordResetTokens;

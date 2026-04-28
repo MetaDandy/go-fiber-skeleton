@@ -8,19 +8,19 @@ import (
 )
 
 type Session struct {
-	ID               uuid.UUID `gorm:"type:uuid;primaryKey;"`
+	ID               uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
 	Provider         string
 	RefreshTokenHash string
-	ExpiresAt        string
+	ExpiresAt        time.Time `gorm:"type:timestamptz"`
 	Ip               string
 	UserAgent        string
-	RevokedAt        string
+	RevokedAt        *time.Time `gorm:"type:timestamptz"`
 
-	UserID uuid.UUID `gorm:"type:uuid;"`
+	UserID uuid.UUID `gorm:"type:uuid"`
 	User   User      `gorm:"foreignKey:UserID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	CreatedAt time.Time      `gorm:"type:timestamptz;default:CURRENT_TIMESTAMP"`
+	UpdatedAt time.Time      `gorm:"type:timestamptz;default:CURRENT_TIMESTAMP"`
 	DeletedAt gorm.DeletedAt `gorm:"index"`
 }
 

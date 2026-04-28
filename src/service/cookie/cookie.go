@@ -1,4 +1,4 @@
-package helper
+package cookie
 
 import (
 	"os"
@@ -77,10 +77,11 @@ func ClearOAuthStateCookie(c fiber.Ctx) {
 
 	c.Cookie(&fiber.Cookie{
 		Name:     CookieNameOAuthState,
+		Value:    "",
 		Path:     "/",
 		Domain:   cfg.Domain,
-		Expires:  time.Unix(0, 0),
-		MaxAge:   -1,
+		Expires:  time.Now().Add(-24 * time.Hour), // Expiración inmediata en el pasado
+		MaxAge:   -1,                            // Indica al navegador que la borre
 		Secure:   cfg.Secure,
 		HTTPOnly: true,
 		SameSite: cfg.SameSite,
@@ -124,9 +125,10 @@ func ClearAuthTokenCookie(c fiber.Ctx) {
 
 	c.Cookie(&fiber.Cookie{
 		Name:     CookieNameAuthToken,
+		Value:    "",
 		Path:     "/",
 		Domain:   cfg.Domain,
-		Expires:  time.Unix(0, 0),
+		Expires:  time.Now().Add(-24 * time.Hour),
 		MaxAge:   -1,
 		Secure:   cfg.Secure,
 		HTTPOnly: true,
@@ -151,7 +153,7 @@ func SetRefreshTokenCookie(c fiber.Ctx, token string, duration ...time.Duration)
 	c.Cookie(&fiber.Cookie{
 		Name:     CookieNameRefreshToken,
 		Value:    token,
-		Path:     "/api/auth/refresh", // Restrictive path
+		Path:     "/", // Cambiado de /api/auth/refresh a / para que llegue a /api/v1/auth/refresh
 		Domain:   cfg.Domain,
 		MaxAge:   maxAge,
 		Secure:   cfg.Secure,
@@ -171,9 +173,10 @@ func ClearRefreshTokenCookie(c fiber.Ctx) {
 
 	c.Cookie(&fiber.Cookie{
 		Name:     CookieNameRefreshToken,
-		Path:     "/api/auth/refresh",
+		Value:    "",
+		Path:     "/", // Asegurar que coincida con el path de creación
 		Domain:   cfg.Domain,
-		Expires:  time.Unix(0, 0),
+		Expires:  time.Now().Add(-24 * time.Hour),
 		MaxAge:   -1,
 		Secure:   cfg.Secure,
 		HTTPOnly: true,
@@ -212,9 +215,10 @@ func ClearSessionCookie(c fiber.Ctx) {
 
 	c.Cookie(&fiber.Cookie{
 		Name:     CookieNameSessionToken,
+		Value:    "",
 		Path:     "/",
 		Domain:   cfg.Domain,
-		Expires:  time.Unix(0, 0),
+		Expires:  time.Now().Add(-24 * time.Hour),
 		MaxAge:   -1,
 		Secure:   cfg.Secure,
 		HTTPOnly: true,

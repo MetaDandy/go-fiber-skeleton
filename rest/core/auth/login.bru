@@ -1,0 +1,20 @@
+meta {
+  name: login
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{url}}/auth/login/:provider
+  body: none
+  auth: inherit
+}
+
+params:path {
+  provider: google
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
