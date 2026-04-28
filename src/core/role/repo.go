@@ -4,6 +4,7 @@ import (
 	"github.com/MetaDandy/go-fiber-skeleton/helper"
 	"github.com/MetaDandy/go-fiber-skeleton/src/model"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Repo interface {
@@ -33,6 +34,14 @@ type Repo interface {
 
 	UpdateEffectivePermissionSourceTx(tx *gorm.DB, roleID string, permissionID string, oldSourceRoleID string, newSourceRoleID string) error
 	CountDirectPermissionsNotInSetTx(tx *gorm.DB, roleID string, permissionIDs []string) (int64, error)
+
+	// Batch methods
+	UpsertEffectivePermissionsBatchTx(tx *gorm.DB, reps []model.RoleEffectivePermission) error
+	DeleteEffectivePermissionsBySourceAndRolesTx(tx *gorm.DB, roleIDs []string, permissionID string, sourceRoleID string) error
+	GetRolesWithDirectPermissionTx(tx *gorm.DB, roleIDs []string, permissionID string) ([]string, error)
+	GetDirectPermissionsCountsTx(tx *gorm.DB, roleIDs []string) (map[string]int64, error)
+	DeleteDirectPermissionsBatchTx(tx *gorm.DB, roleIDs []string, permissionID string) error
+	DeleteOwnEffectivePermissionsTx(tx *gorm.DB, roleIDs []string, permissionID string) error
 }
 
 type repo struct {
@@ -121,7 +130,7 @@ func (r *repo) BeginTx() *gorm.DB {
 
 func (r *repo) FindByIDTx(tx *gorm.DB, id string) (model.Role, error) {
 	var role model.Role
-	err := tx.
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 		Preload("Role_permissions").
 		Preload("Role_effective_permissions").
 		First(&role, "id = ?", id).Error
@@ -154,24 +163,17 @@ func (r *repo) FindChildrenTx(tx *gorm.DB, roleID string) ([]model.Role, error) 
 
 func (r *repo) FindDescendantsOrderedTx(tx *gorm.DB, roleID string) ([]model.Role, error) {
 	var result []model.Role
-	queue := []string{roleID}
-
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-
-		var children []model.Role
-		if err := tx.Where("role_id = ?", current).Find(&children).Error; err != nil {
-			return nil, err
-		}
-
-		for _, child := range children {
-			result = append(result, child)
-			queue = append(queue, child.ID.String())
-		}
-	}
-
-	return result, nil
+	query := `
+		WITH RECURSIVE role_tree AS (
+			SELECT * FROM roles WHERE role_id = ?
+			UNION ALL
+			SELECT r.* FROM roles r
+			INNER JOIN role_tree rt ON rt.id = r.role_id
+		)
+		SELECT * FROM role_tree
+	`
+	err := tx.Raw(query, roleID).Scan(&result).Error
+	return result, err
 }
 func (r *repo) DescendantsWithDirectPermissionTx(tx *gorm.DB, roleID string, permissionID string) ([]model.Role, error) {
 	descendants, err := r.FindDescendantsOrderedTx(tx, roleID)
@@ -231,7 +233,10 @@ func (r *repo) DeleteEffectivePermissionBySourceTx(tx *gorm.DB, roleID string, p
 }
 
 func (r *repo) UpsertEffectivePermissionTx(tx *gorm.DB, rep model.RoleEffectivePermission) error {
-	return tx.Create(&rep).Error
+	return tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "role_id"}, {Name: "permission_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"source_role_id", "updated_at"}),
+	}).Create(&rep).Error
 }
 
 func (r *repo) UpdateEffectivePermissionSourceTx(tx *gorm.DB, roleID string, permissionID string, oldSourceRoleID string, newSourceRoleID string) error {
@@ -252,4 +257,71 @@ func (r *repo) CountDirectPermissionsNotInSetTx(tx *gorm.DB, roleID string, perm
 
 	err := query.Count(&count).Error
 	return count, err
+}
+
+func (r *repo) UpsertEffectivePermissionsBatchTx(tx *gorm.DB, reps []model.RoleEffectivePermission) error {
+	if len(reps) == 0 {
+		return nil
+	}
+	return tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "role_id"}, {Name: "permission_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"source_role_id", "updated_at"}),
+	}).CreateInBatches(&reps, 100).Error
+}
+
+func (r *repo) DeleteEffectivePermissionsBySourceAndRolesTx(tx *gorm.DB, roleIDs []string, permissionID string, sourceRoleID string) error {
+	if len(roleIDs) == 0 {
+		return nil
+	}
+	return tx.Where("role_id IN ? AND permission_id = ? AND source_role_id = ?", roleIDs, permissionID, sourceRoleID).
+		Delete(&model.RoleEffectivePermission{}).Error
+}
+
+func (r *repo) GetRolesWithDirectPermissionTx(tx *gorm.DB, roleIDs []string, permissionID string) ([]string, error) {
+	if len(roleIDs) == 0 {
+		return nil, nil
+	}
+	var ids []string
+	err := tx.Model(&model.RolePermission{}).
+		Where("role_id IN ? AND permission_id = ?", roleIDs, permissionID).
+		Pluck("role_id", &ids).Error
+	return ids, err
+}
+
+func (r *repo) GetDirectPermissionsCountsTx(tx *gorm.DB, roleIDs []string) (map[string]int64, error) {
+	if len(roleIDs) == 0 {
+		return nil, nil
+	}
+	type result struct {
+		RoleID string
+		Count  int64
+	}
+	var results []result
+	err := tx.Model(&model.RolePermission{}).
+		Select("role_id, count(permission_id) as count").
+		Where("role_id IN ?", roleIDs).
+		Group("role_id").
+		Scan(&results).Error
+
+	counts := make(map[string]int64)
+	for _, res := range results {
+		counts[res.RoleID] = res.Count
+	}
+	return counts, err
+}
+
+func (r *repo) DeleteDirectPermissionsBatchTx(tx *gorm.DB, roleIDs []string, permissionID string) error {
+	if len(roleIDs) == 0 {
+		return nil
+	}
+	return tx.Where("role_id IN ? AND permission_id = ?", roleIDs, permissionID).
+		Delete(&model.RolePermission{}).Error
+}
+
+func (r *repo) DeleteOwnEffectivePermissionsTx(tx *gorm.DB, roleIDs []string, permissionID string) error {
+	if len(roleIDs) == 0 {
+		return nil
+	}
+	// We use parameterized queries directly since GORM's Where ("source_role_id = role_id") might be tricky or we can just use raw query
+	return tx.Exec("DELETE FROM roleeffectivepermissions WHERE role_id IN ? AND permission_id = ? AND source_role_id = role_id", roleIDs, permissionID).Error
 }

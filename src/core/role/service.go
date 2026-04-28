@@ -147,10 +147,6 @@ func (s *service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[resp
 	}, nil
 }
 
-func hasAtLeastOneElement(add, remove []string) bool {
-	return len(add) > 0 || len(remove) > 0
-}
-
 func removeDuplicatesBetweenArrays(add, remove []string) ([]string, []string) {
 	removeSet := make(map[string]struct{}, len(remove))
 	for _, id := range remove {
@@ -389,104 +385,81 @@ func (s *service) UpdateDetails(id string, input UpdateDetails) error {
 }
 
 func (s *service) propagateAddTx(tx *gorm.DB, roleID uuid.UUID, permissionID string, strictMode bool) error {
-	// 1. el rol actual recibe effective propio
-	exists, err := s.repo.HasEffectivePermissionTx(tx, roleID.String(), permissionID)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		if err := s.repo.UpsertEffectivePermissionTx(tx, model.RoleEffectivePermission{
-			ID:           uuid.New(),
-			RoleID:       roleID,
-			SourceRoleID: roleID,
-			PermissionID: permissionID,
-		}); err != nil {
-			return err
-		}
-	}
-
-	// 2. recorrer descendientes
 	descendants, err := s.repo.FindDescendantsOrderedTx(tx, roleID.String())
 	if err != nil {
 		return err
 	}
 
+	bulkUpserts := make([]model.RoleEffectivePermission, 0, len(descendants)+1)
+	bulkUpserts = append(bulkUpserts, model.RoleEffectivePermission{
+		ID:           uuid.New(),
+		RoleID:       roleID,
+		SourceRoleID: roleID,
+		PermissionID: permissionID,
+	})
+
 	for _, d := range descendants {
-		if strictMode {
-			hasDirect, err := s.repo.HasDirectPermissionTx(tx, d.ID.String(), permissionID)
+		bulkUpserts = append(bulkUpserts, model.RoleEffectivePermission{
+			ID:           uuid.New(),
+			RoleID:       d.ID,
+			SourceRoleID: roleID,
+			PermissionID: permissionID,
+		})
+	}
+
+	if strictMode && len(descendants) > 0 {
+		descendantIDs := make([]string, 0, len(descendants))
+		idToName := make(map[string]string)
+		for _, d := range descendants {
+			descendantIDs = append(descendantIDs, d.ID.String())
+			idToName[d.ID.String()] = d.Name
+		}
+
+		rolesWithDirect, err := s.repo.GetRolesWithDirectPermissionTx(tx, descendantIDs, permissionID)
+		if err != nil {
+			return err
+		}
+
+		if len(rolesWithDirect) > 0 {
+			counts, err := s.repo.GetDirectPermissionsCountsTx(tx, rolesWithDirect)
 			if err != nil {
 				return err
 			}
 
-			if hasDirect {
-				remainingDirectCount, err := s.repo.CountDirectPermissionsNotInSetTx(
-					tx,
-					d.ID.String(),
-					[]string{permissionID},
-				)
-				if err != nil {
-					return err
-				}
-
-				if remainingDirectCount == 0 {
+			for _, id := range rolesWithDirect {
+				if counts[id] <= 1 {
 					return api_error.BadRequest(
-						"Descendant role '" + d.Name + "' must keep at least one direct permission of its own",
+						"Descendant role '" + idToName[id] + "' must keep at least one direct permission of its own",
 					)
 				}
-
-				if err := s.repo.DeleteDirectPermissionTx(tx, d.ID.String(), permissionID); err != nil {
-					return err
-				}
-
-				// borrar solo el effective propio del descendiente
-				if err := s.repo.DeleteEffectivePermissionBySourceTx(
-					tx,
-					d.ID.String(),
-					permissionID,
-					d.ID.String(),
-				); err != nil {
-					return err
-				}
 			}
-		}
 
-		hasEffective, err := s.repo.HasEffectivePermissionTx(tx, d.ID.String(), permissionID)
-		if err != nil {
-			return err
-		}
-		if !hasEffective {
-			if err := s.repo.UpsertEffectivePermissionTx(tx, model.RoleEffectivePermission{
-				ID:           uuid.New(),
-				RoleID:       d.ID,
-				SourceRoleID: roleID,
-				PermissionID: permissionID,
-			}); err != nil {
+			if err := s.repo.DeleteDirectPermissionsBatchTx(tx, rolesWithDirect, permissionID); err != nil {
+				return err
+			}
+			if err := s.repo.DeleteOwnEffectivePermissionsTx(tx, rolesWithDirect, permissionID); err != nil {
 				return err
 			}
 		}
 	}
 
-	return nil
+	return s.repo.UpsertEffectivePermissionsBatchTx(tx, bulkUpserts)
 }
 
 func (s *service) propagateRemoveTx(tx *gorm.DB, roleID uuid.UUID, permissionID string) error {
-	// borrar effective del rol actual originado por él mismo
-	if err := s.repo.DeleteEffectivePermissionBySourceTx(tx, roleID.String(), permissionID, roleID.String()); err != nil {
-		return err
-	}
-
 	descendants, err := s.repo.FindDescendantsOrderedTx(tx, roleID.String())
 	if err != nil {
 		return err
 	}
 
+	roleIDs := make([]string, 0, len(descendants)+1)
+	roleIDs = append(roleIDs, roleID.String())
+
 	for _, d := range descendants {
-		if err := s.repo.DeleteEffectivePermissionBySourceTx(tx, d.ID.String(), permissionID, roleID.String()); err != nil {
-			return err
-		}
+		roleIDs = append(roleIDs, d.ID.String())
 	}
 
-	return nil
+	return s.repo.DeleteEffectivePermissionsBySourceAndRolesTx(tx, roleIDs, permissionID, roleID.String())
 }
 
 func (s *service) rebuildSingleRoleEffectivePermissionsTx(tx *gorm.DB, role model.Role) error {
@@ -554,13 +527,19 @@ func (s *service) rebuildRoleTreeTx(tx *gorm.DB, roleID uuid.UUID) error {
 		return err
 	}
 
-	children, err := s.repo.FindChildrenTx(tx, roleID.String())
+	// Traemos todos los descendientes en el orden jerárquico ya arreglado por WITH RECURSIVE.
+	children, err := s.repo.FindDescendantsOrderedTx(tx, roleID.String())
 	if err != nil {
 		return err
 	}
 
+	// Al recorrer este arreglo de arriba hacia abajo, cada hijo dependerá del efectivo de sus padres frescos.
 	for _, child := range children {
-		if err := s.rebuildRoleTreeTx(tx, child.ID); err != nil {
+		freshChild, err := s.repo.FindByIDTx(tx, child.ID.String())
+		if err != nil {
+			return err
+		}
+		if err := s.rebuildSingleRoleEffectivePermissionsTx(tx, freshChild); err != nil {
 			return err
 		}
 	}
