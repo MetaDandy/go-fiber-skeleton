@@ -38,19 +38,19 @@ func SetupContainer() *Container {
 
 	authHandler := authentication.NewHandler(authService, AuthMiddleware)
 
-	userHandler := user.NewHandler(userService)
+	userHandler := user.NewHandler(userService, AuthMiddleware)
 
 	permissionRepo := permission.NewRepo(config.DB)
 	permissionService := permission.NewService(permissionRepo)
-	permissionHandler := permission.NewHandler(permissionService)
+	permissionHandler := permission.NewHandler(permissionService, AuthMiddleware)
 
 	roleRepo := role.NewRepo(config.DB)
 	roleService := role.NewService(roleRepo, role.PermissionChecker(permissionService))
-	roleHandler := role.NewHandler(roleService)
+	roleHandler := role.NewHandler(roleService, AuthMiddleware)
 
 	userPermissionRepo := user_permission.NewRepo(config.DB)
 	userPermissionService := user_permission.NewService(userPermissionRepo, user_permission.PermissionChecker(permissionService))
-	userPermissionHandler := user_permission.NewHandler(userPermissionService)
+	userPermissionHandler := user_permission.NewHandler(userPermissionService, AuthMiddleware)
 
 	return &Container{
 		Handlers: []interface {

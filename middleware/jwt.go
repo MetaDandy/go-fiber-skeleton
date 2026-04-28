@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/MetaDandy/go-fiber-skeleton/api_error"
+	"github.com/MetaDandy/go-fiber-skeleton/helper"
 	"github.com/MetaDandy/go-fiber-skeleton/src/service/cookie"
 	"github.com/gofiber/fiber/v3"
 	"github.com/golang-jwt/jwt/v5"
@@ -52,6 +53,13 @@ func Jwt(provider TokenProvider) fiber.Handler {
 			if role, ok := claims["role"].(string); ok {
 				c.Locals("role", role)
 			}
+			if permissions, ok := claims["permissions"].([]interface{}); ok {
+				permsStr := make([]string, len(permissions))
+				for i, p := range permissions {
+					permsStr[i] = p.(string)
+				}
+				c.Locals("permissions", permsStr)
+			}
 			return c.Next()
 		}
 
@@ -65,11 +73,7 @@ func tryRefreshToken(c fiber.Ctx, provider TokenProvider) error {
 		return api_error.Unauthorized("No session found (missing refresh token)")
 	}
 
-	ip := c.IP()
-	if ip == "" {
-		ip = c.Get("X-Forwarded-For")
-	}
-	userAgent := c.Get("User-Agent")
+	ip, userAgent := helper.GetClientDetails(c)
 
 	// Usar la interfaz inyectada para rotar el token
 	newToken, newRefreshToken, err := provider.RefreshToken(refreshToken, ip, userAgent)
@@ -84,15 +88,25 @@ func tryRefreshToken(c fiber.Ctx, provider TokenProvider) error {
 	cookie.SetRefreshTokenCookie(c, newRefreshToken)
 
 	// Volver a validar el NUEVO token para llenar Locals
-	token, _ := jwt.Parse(newToken, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.Parse(newToken, func(token *jwt.Token) (interface{}, error) {
 		return []byte(os.Getenv("JWT_SECRET")), nil
 	})
+	if err != nil {
+		return api_error.Unauthorized("Failed to parse newly generated token").WithErr(err)
+	}
 
 	if claims, ok := token.Claims.(jwt.MapClaims); ok {
 		c.Locals("user_id", claims["sub"])
 		c.Locals("email", claims["email"])
 		if role, ok := claims["role"].(string); ok {
 			c.Locals("role", role)
+		}
+		if permissions, ok := claims["permissions"].([]interface{}); ok {
+			permsStr := make([]string, len(permissions))
+			for i, p := range permissions {
+				permsStr[i] = p.(string)
+			}
+			c.Locals("permissions", permsStr)
 		}
 	}
 

@@ -222,7 +222,7 @@ func (s *service) UpdateHeader(id string, input UpdateHeader) error {
 		return err
 	}
 
-	if err := s.normalizeDirectPermissionsAgainstParentTx(tx, role.ID); err != nil {
+	if err := s.normalizeDirectPermissionsAgainstParentTx(tx, role.ID, input.StrictMode); err != nil {
 		tx.Rollback()
 		return err
 	}
@@ -547,7 +547,7 @@ func (s *service) rebuildRoleTreeTx(tx *gorm.DB, roleID uuid.UUID) error {
 	return nil
 }
 
-func (s *service) normalizeDirectPermissionsAgainstParentTx(tx *gorm.DB, roleID uuid.UUID) error {
+func (s *service) normalizeDirectPermissionsAgainstParentTx(tx *gorm.DB, roleID uuid.UUID, strictMode bool) error {
 	role, err := s.repo.FindByIDTx(tx, roleID.String())
 	if err != nil {
 		return err
@@ -582,6 +582,10 @@ func (s *service) normalizeDirectPermissionsAgainstParentTx(tx *gorm.DB, roleID 
 		return nil
 	}
 
+	if !strictMode {
+		return api_error.BadRequest("The new parent role already provides one or more identical permissions currently assigned directly to this role. Please remove these overlapped permissions manually or send strict_mode=true to automatically override them.")
+	}
+
 	// regla nueva: el rol debe conservar al menos un permiso directo propio
 	remainingDirectCount, err := s.repo.CountDirectPermissionsNotInSetTx(tx, role.ID.String(), duplicatedPermissionIDs)
 	if err != nil {
@@ -589,7 +593,7 @@ func (s *service) normalizeDirectPermissionsAgainstParentTx(tx *gorm.DB, roleID 
 	}
 
 	if remainingDirectCount == 0 {
-		return api_error.BadRequest("Role must keep at least one direct permission of its own")
+		return api_error.BadRequest("Role would be left with zero direct permissions due to overlap with the new parent role.")
 	}
 
 	// para cada permiso que ahora será heredado:

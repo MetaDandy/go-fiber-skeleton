@@ -29,6 +29,7 @@ type Repo interface {
 	GetSessionByHash(hash string) (model.Session, error)
 	RevokeSession(id uuid.UUID) error
 	RevokeAllUserSessions(userID uuid.UUID) error
+	GetUserPermissions(userID string) ([]string, error)
 }
 
 type repo struct {
@@ -269,4 +270,19 @@ func (r *repo) RevokeSession(id uuid.UUID) error {
 
 func (r *repo) RevokeAllUserSessions(userID uuid.UUID) error {
 	return r.db.Model(&model.Session{}).Where("user_id = ? AND revoked_at IS NULL", userID).Update("revoked_at", time.Now()).Error
+}
+func (r *repo) GetUserPermissions(userID string) ([]string, error) {
+	var permissions []string
+	query := `
+		SELECT role_effective_permissions.permission_id 
+		FROM role_effective_permissions
+		INNER JOIN users ON users.role_id = role_effective_permissions.role_id
+		WHERE users.id = ?
+		UNION
+		SELECT permission_id 
+		FROM user_permissions 
+		WHERE user_id = ?
+	`
+	err := r.db.Raw(query, userID, userID).Scan(&permissions).Error
+	return permissions, err
 }

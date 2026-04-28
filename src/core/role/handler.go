@@ -16,17 +16,19 @@ type Handler interface {
 }
 
 type handler struct {
-	service Service
+	service   Service
+	jwtMiddle fiber.Handler
 }
 
-func NewHandler(service Service) Handler {
+func NewHandler(service Service, jwtMiddle fiber.Handler) Handler {
 	return &handler{
-		service: service,
+		service:   service,
+		jwtMiddle: jwtMiddle,
 	}
 }
 
 func (h *handler) RegisterRoutes(router fiber.Router) {
-	roles := router.Group("/roles")
+	roles := router.Group("/roles", h.jwtMiddle)
 	roles.Post("/", h.Create)
 	roles.Get("/", h.FindAll)
 	roles.Get("/:id", h.FindByID)

@@ -11,6 +11,7 @@ type UpdateHeader struct {
 	Name        *string `json:"name"`
 	Description *string `json:"description"`
 	RoleID      *string `json:"role_id"`
+	StrictMode  bool    `json:"strict_mode"`
 }
 
 type UpdateDetails struct {
