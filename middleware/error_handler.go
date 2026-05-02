@@ -9,6 +9,13 @@ import (
 
 // ErrorHandler es el middleware global que captura y formatea errores
 func ErrorHandler(c fiber.Ctx) error {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("Panic recovered", "error", r)
+			_ = c.Status(fiber.StatusInternalServerError).JSON(api_error.InternalServerError("Internal Server Error"))
+		}
+	}()
+
 	// Proceder con el siguiente handler
 	err := c.Next()
 
@@ -28,31 +35,29 @@ func ErrorHandler(c fiber.Ctx) error {
 			)
 		}
 
-		// Retornar la respuesta formateada
-		return c.Status(apiErr.Status).JSON(apiErr.ToResponse())
+		// Retornar la respuesta formateada directamente (el struct ya tiene los tags json correctos)
+		return c.Status(apiErr.Status).JSON(apiErr)
 	}
 
 	// Si es un error de Fiber (ej: route not found)
 	if fiberErr, ok := err.(*fiber.Error); ok {
+		var apiErr *api_error.Error
 		switch fiberErr.Code {
 		case fiber.StatusNotFound:
-			return c.Status(fiber.StatusNotFound).JSON(
-				api_error.NotFound("Ruta no encontrada").ToResponse(),
-			)
+			apiErr = api_error.NotFound("Resource not found")
 		case fiber.StatusMethodNotAllowed:
-			return c.Status(fiber.StatusMethodNotAllowed).JSON(
-				api_error.Forbidden("Método no permitido").ToResponse(),
-			)
+			apiErr = api_error.Forbidden("Method not allowed")
+		case fiber.StatusUnauthorized:
+			apiErr = api_error.Unauthorized("Unauthorized")
 		default:
-			return c.Status(fiberErr.Code).JSON(
-				api_error.InternalServerError("Error interno del servidor").ToResponse(),
-			)
+			apiErr = api_error.InternalServerError(fiberErr.Message)
 		}
+		return c.Status(fiberErr.Code).JSON(apiErr)
 	}
 
 	// Cualquier otro error no identificado
 	slog.Error("Unhandled error", "error", err.Error())
 	return c.Status(fiber.StatusInternalServerError).JSON(
-		api_error.InternalServerError("Error interno del servidor").ToResponse(),
+		api_error.InternalServerError("Internal Server Error"),
 	)
 }

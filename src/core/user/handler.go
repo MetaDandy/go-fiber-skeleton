@@ -42,12 +42,8 @@ func (h *handler) Create(c fiber.Ctx) error {
 		return api_error.BadRequest("Invalid input")
 	}
 
-	err := h.service.Create(*input)
-	if err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError("Could not create user").WithErr(err)
+	if err := h.service.Create(*input); err != nil {
+		return err
 	}
 
 	return c.SendStatus(fiber.StatusCreated)
@@ -57,10 +53,7 @@ func (h *handler) FindAll(c fiber.Ctx) error {
 	opts := helper.NewFindAllOptionsFromQuery(c)
 	finded, err := h.service.FindAll(opts)
 	if err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError("Could not retrieve users").WithErr(err)
+		return err
 	}
 	return c.JSON(finded)
 }
@@ -69,10 +62,7 @@ func (h *handler) FindByID(c fiber.Ctx) error {
 	id := c.Params("id")
 	finded, err := h.service.FindByID(id)
 	if err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.NotFound("User not found").WithErr(err)
+		return err
 	}
 
 	return c.Status(fiber.StatusOK).JSON(finded)
@@ -87,12 +77,8 @@ func (h *handler) Update(c fiber.Ctx) error {
 
 	id := c.Params("id")
 
-	err := h.service.Update(id, input)
-	if err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError("Could not update user").WithErr(err)
+	if err := h.service.Update(id, input); err != nil {
+		return err
 	}
 
 	return c.SendStatus(fiber.StatusOK)
@@ -102,10 +88,7 @@ func (h *handler) Delete(c fiber.Ctx) error {
 	id := c.Params("id")
 
 	if err := h.service.Delete(id); err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError("Could not delete user").WithErr(err)
+		return err
 	}
 	return c.Status(fiber.StatusNoContent).Send(nil)
 }

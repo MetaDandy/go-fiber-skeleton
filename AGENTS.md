@@ -9,11 +9,12 @@ Guía de supervivencia para agentes OpenCode trabajando en este repositorio.
 - **Inyección de Dependencias**: Centralizada en `src/container.go`. Agregá nuevos módulos ahí.
 - **Modelos**: GORM en `src/model/`.
 - **DTOs**: Entrada en `src/core/{module}/dto.go`, Salida en `src/response/`.
-- **Manejo de Errores**: Usá `api_error` package (`api_error.BadRequest`, etc.).
+- **Manejo de Errores**: Usá el package `api_error`. Los Services DEBEN retornar `*api_error.Error` para que los Handlers lo propaguen automáticamente al Middleware global sin casting manual.
+- **Estandarización**: Todo error de API debe incluir `Message` (legible), `Code` (string interno) y `Status` (HTTP code).
 
 ### Convenciones Críticas
 - **Nomenclatura**: Archivos dentro de módulos son genéricos (`handler.go`, `service.go`, `repo.go`).
-- **Interfaces**: Cada capa define una `interface` pública e implementa con un `struct` privado.
+- **Interfaces**: Cada capa define una `interface` pública e implementa con un `struct` privado. Los tests deben usar Mocks de estas interfaces.
 - **GORM**: Usamos UUIDs como Primary Keys.
 - **Soft Deletes**: Soportado vía `gorm.DeletedAt`.
 
@@ -37,7 +38,7 @@ Guía de supervivencia para agentes OpenCode trabajando en este repositorio.
 ## 🧪 Testing
 
 - **API Testing**: Colección **Bruno** en `rest/`. Usala para verificar endpoints manualmente.
-- **Unit Testing**: Correr con `go test ./...`.
+- **Unit Testing**: Correr con `go test ./...`. Se usa `testify/assert` para validaciones y `testify/mock` para dependencias. Los tests deben vivir junto al código que prueban (`archivo_test.go`).
 
 ## ⚠️ Gotchas y Errores Comunes
 
