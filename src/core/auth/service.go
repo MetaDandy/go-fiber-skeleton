@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"github.com/MetaDandy/go-fiber-skeleton/api_error"
@@ -22,7 +21,6 @@ type Service interface {
 	UserAuthProviders(email string) ([]string, error)
 	SignUpPassword(input SignUpPassword) error
 	LoginPassword(input LoginPassword) (string, string, error)
-	SendTestEmail(email, name string) error
 	VerifyEmail(token string) error
 	ResendVerificationEmail(email string) error
 	ForgotPassword(input ForgotPassword) error
@@ -46,13 +44,15 @@ type service struct {
 	repo        Repo
 	uRepo       uRepo
 	mailService mail.EmailService
+	appURL      string
 }
 
-func NewService(repo Repo, uRepo uRepo, mailService mail.EmailService) Service {
+func NewService(repo Repo, uRepo uRepo, mailService mail.EmailService, appURL string) Service {
 	return &service{
 		repo:        repo,
 		uRepo:       uRepo,
 		mailService: mailService,
+		appURL:      appURL,
 	}
 }
 
@@ -134,27 +134,6 @@ func (s *service) SignUpPassword(input SignUpPassword) error {
 		return nil
 	}
 
-	return nil
-}
-
-// SendTestEmail envía un email de prueba (para testing durante desarrollo)
-func (s *service) SendTestEmail(email, name string) error {
-	if email == "" {
-		return fmt.Errorf("email is required")
-	}
-
-	if name == "" {
-		name = "User"
-	}
-
-	ctx := context.Background()
-
-	// Enviar email de bienvenida como prueba
-	if err := s.mailService.SendWelcome(ctx, email, name); err != nil {
-		return fmt.Errorf("failed to send test email: %w", err)
-	}
-
-	log.Printf("Test email sent to %s", email)
 	return nil
 }
 
@@ -284,7 +263,7 @@ func (s *service) ForgotPassword(input ForgotPassword) error {
 
 	// Construir el link de reset
 	// El token sin hash se envía en el email, el usuario lo usará en reset-password
-	appURL := os.Getenv("APP_URL")
+	appURL := s.appURL
 	if appURL == "" {
 		appURL = "http://localhost:3000"
 	}
@@ -518,13 +497,6 @@ func (s *service) OAuthCreateOrLogin(input OAuthCallbackInternal) (string, strin
 		return "", "", api_error.BadRequest("Invalid OAuth provider")
 	}
 
-	// 3. Validar el state ANTES de realizar cualquier operación de persistencia
-	// Todavía no lo consumimos, solo verificamos que sea válido.
-	// El consumo debe ser atómico con la creación/login del usuario.
-	if err := s.repo.ValidateOAuthState(input.State, input.Provider); err != nil {
-		return "", "", api_error.BadRequest("Invalid or expired OAuth state")
-	}
-
 	// 4. Buscar si el usuario existe por email
 	user, err := s.uRepo.FindByEmail(input.UserInfo.Email)
 
@@ -602,16 +574,10 @@ func (s *service) oauthLogin(input OAuthCallbackInternal, user model.User) (stri
 			UserAgent: input.UserAgent,
 		}
 
-		// Usamos una transacción para consumir el state y guardar el log
-		// Como no tenemos una función específica para "solo log + consumir state",
-		// podemos reutilizar el concepto o simplemente validar que el consumo sea atómico.
-		if err := s.repo.ValidateOAuthState(input.State, input.Provider); err != nil {
-			return "", "", api_error.BadRequest("Invalid or expired OAuth state")
-		}
-
-		if err := s.repo.CreateAuthLog(authLog); err != nil {
-			log.Printf("failed to create OAuth login log: %v", err)
-			// No fallar el login si falla el log
+		// Transacción atómica: consumir state + crear log
+		if err := s.repo.ConsumeOAuthStateAndLog(input.State, input.Provider, authLog); err != nil {
+			log.Printf("failed to consume OAuth state and create log: %v", err)
+			// No fallar el login si falla el log/state consumption (state already validated upstream)
 		}
 
 		fmt.Printf("✅ [OAuth Login - Existing Provider] Login exitoso\n")

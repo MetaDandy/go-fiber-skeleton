@@ -2,8 +2,7 @@ package authentication
 
 import (
 	"context"
-	"math/rand"
-	"os"
+	"crypto/rand"
 	"time"
 
 	"github.com/MetaDandy/go-fiber-skeleton/api_error"
@@ -16,53 +15,55 @@ import (
 	"github.com/google/uuid"
 )
 
+// authRateLimiter is a package-level rate limiter shared across auth routes
+var authRateLimiter = limiter.New(limiter.Config{
+	Max:        5,
+	Expiration: 15 * time.Minute,
+	LimitReached: func(c fiber.Ctx) error {
+		return api_error.TooManyRequests("Too many requests from this IP, please try again later")
+	},
+})
+
 type Handler interface {
 	RegisterRoutes(router fiber.Router)
 	UserAuthProviders(c fiber.Ctx) error
 	SignUpPassword(c fiber.Ctx) error
 	LoginPassword(c fiber.Ctx) error
 	RefreshToken(c fiber.Ctx) error
-	SendTestEmail(c fiber.Ctx) error
 	VerifyEmail(c fiber.Ctx) error
 	ResendVerificationEmail(c fiber.Ctx) error
 	ForgotPassword(c fiber.Ctx) error
 	ResetPassword(c fiber.Ctx) error
 	ChangePassword(c fiber.Ctx) error
 	Logout(c fiber.Ctx) error
+	OAuthLogin(c fiber.Ctx) error
 	OAuthCallback(c fiber.Ctx) error
 }
 
 type handler struct {
-	service   Service
-	jwtMiddle fiber.Handler
+	service     Service
+	jwtMiddle   fiber.Handler
+	redirectURL string
 }
 
-func NewHandler(service Service, jwtMiddle fiber.Handler) Handler {
+func NewHandler(service Service, jwtMiddle fiber.Handler, redirectURL string) Handler {
 	return &handler{
-		service:   service,
-		jwtMiddle: jwtMiddle,
+		service:     service,
+		jwtMiddle:   jwtMiddle,
+		redirectURL: redirectURL,
 	}
 }
 
 func (h *handler) RegisterRoutes(router fiber.Router) {
-	authRateLimiter := limiter.New(limiter.Config{
-		Max:        5,
-		Expiration: 15 * time.Minute,
-		LimitReached: func(c fiber.Ctx) error {
-			return api_error.TooManyRequests("Too many requests from this IP, please try again later")
-		},
-	})
-
 	auth := router.Group("/auth")
 	auth.Get("/providers/:email", h.UserAuthProviders)
-	auth.Post("/signup", h.SignUpPassword)
+	auth.Post("/signup", authRateLimiter, h.SignUpPassword)
 	auth.Post("/signin", authRateLimiter, h.LoginPassword)
 	auth.Post("/refresh", h.RefreshToken)
-	auth.Post("/send-test-email", h.SendTestEmail)
-	auth.Get("/verify-email/:token", h.VerifyEmail)
+	auth.Get("/verify-email/:token", authRateLimiter, h.VerifyEmail)
 	auth.Get("/resend-verification-email/:email", h.ResendVerificationEmail)
 	auth.Post("/forgot-password", authRateLimiter, h.ForgotPassword)
-	auth.Post("/reset-password", h.ResetPassword)
+	auth.Post("/reset-password", authRateLimiter, h.ResetPassword)
 	auth.Get("/login/:provider", h.OAuthLogin)
 	auth.Get("/callback", h.OAuthCallback)
 
@@ -190,33 +191,6 @@ func (h *handler) Logout(c fiber.Ctx) error {
 	})
 }
 
-func (h *handler) SendTestEmail(c fiber.Ctx) error {
-	var input struct {
-		Email string `json:"email"`
-		Name  string `json:"name"`
-	}
-
-	if err := c.Bind().Body(&input); err != nil {
-		return api_error.BadRequest("Invalid request body")
-	}
-
-	if input.Email == "" {
-		return api_error.BadRequest("Email is required")
-	}
-
-	if err := h.service.SendTestEmail(input.Email, input.Name); err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError("Failed to send test email").WithErr(err)
-	}
-
-	return c.JSON(fiber.Map{
-		"message": "test email sent successfully",
-		"email":   input.Email,
-	})
-}
-
 func (h *handler) VerifyEmail(c fiber.Ctx) error {
 	token := c.Params("token")
 	if token == "" {
@@ -260,11 +234,8 @@ func (h *handler) ForgotPassword(c fiber.Ctx) error {
 		return api_error.BadRequest("Invalid request body: " + err.Error()).WithErr(err)
 	}
 
-	// Extraer IP del contexto/header
-	input.Ip = c.IP()
-	if input.Ip == "" {
-		input.Ip = c.Get("X-Forwarded-For")
-	}
+	// Extraer IP y User-Agent del contexto usando helper
+	input.Ip, _ = helper.GetClientDetails(c)
 
 	if err := input.Validate(); err != nil {
 		return api_error.BadRequest("Invalid request body: " + err.Error()).WithErr(err)
@@ -289,12 +260,8 @@ func (h *handler) ResetPassword(c fiber.Ctx) error {
 		return api_error.BadRequest("Invalid request body: " + err.Error()).WithErr(err)
 	}
 
-	// Extraer IP y User-Agent del contexto
-	input.Ip = c.IP()
-	if input.Ip == "" {
-		input.Ip = c.Get("X-Forwarded-For")
-	}
-	input.UserAgent = c.Get("User-Agent")
+	// Extraer IP y User-Agent del contexto usando helper
+	input.Ip, input.UserAgent = helper.GetClientDetails(c)
 
 	if err := input.Validate(); err != nil {
 		return api_error.BadRequest("Invalid request body: " + err.Error()).WithErr(err)
@@ -334,12 +301,8 @@ func (h *handler) ChangePassword(c fiber.Ctx) error {
 		return api_error.BadRequest("Invalid user ID format in session")
 	}
 
-	// Extraer IP y User-Agent
-	ip := c.IP()
-	if ip == "" {
-		ip = c.Get("X-Forwarded-For")
-	}
-	userAgent := c.Get("User-Agent")
+	// Extraer IP y User-Agent usando helper
+	ip, userAgent := helper.GetClientDetails(c)
 
 	if err := h.service.ChangePassword(uid, input, ip, userAgent); err != nil {
 		if apiErr, ok := err.(*api_error.Error); ok {
@@ -355,10 +318,11 @@ func (h *handler) ChangePassword(c fiber.Ctx) error {
 
 // generateState genera un estado aleatorio para CSRF protection
 func generateState() string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	state := make([]byte, 32)
-	for i := range state {
-		state[i] = charset[rand.Intn(len(charset))]
+	_, err := rand.Read(state)
+	if err != nil {
+		// Fallback should never happen, but handle gracefully
+		return ""
 	}
 	return string(state)
 }
@@ -388,7 +352,7 @@ func (h *handler) OAuthLogin(c fiber.Ctx) error {
 	}
 
 	// Obtener URL de autorización
-	authURL, err := auth.GetAuthURL(provider, creds, os.Getenv("URI_REDIRECT"), state)
+	authURL, err := auth.GetAuthURL(provider, creds, h.redirectURL, state)
 	if err != nil {
 		return api_error.InternalServerError("Could not generate auth URL").WithErr(err)
 	}
@@ -424,7 +388,7 @@ func (h *handler) OAuthCallback(c fiber.Ctx) error {
 	}
 
 	// Intercambiar código por token con el proveedor
-	token, err := auth.ExchangeCode(provider, creds, os.Getenv("URI_REDIRECT"), code)
+	token, err := auth.ExchangeCode(provider, creds, h.redirectURL, code)
 	if err != nil {
 		return api_error.InternalServerError("Failed to exchange authorization code").WithErr(err)
 	}
@@ -436,6 +400,7 @@ func (h *handler) OAuthCallback(c fiber.Ctx) error {
 	}
 
 	// Preparar DTO interno para el servicio
+	ip, userAgent := helper.GetClientDetails(c)
 	oauthInput := OAuthCallbackInternal{
 		Provider: provider,
 		State:    state, // Pasar el state para validación y consumo atómico en el servicio
@@ -445,13 +410,8 @@ func (h *handler) OAuthCallback(c fiber.Ctx) error {
 			Name:  userInfo.Name,
 			Image: userInfo.Image,
 		},
-		Ip:        c.IP(),
-		UserAgent: c.Get("User-Agent"),
-	}
-
-	// Si la IP no se pudo obtener, intentar con X-Forwarded-For
-	if oauthInput.Ip == "" {
-		oauthInput.Ip = c.Get("X-Forwarded-For")
+		Ip:        ip,
+		UserAgent: userAgent,
 	}
 
 	// Llamar al servicio para crear o hacer login del usuario

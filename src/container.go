@@ -2,6 +2,7 @@ package src
 
 import (
 	"log"
+	"os"
 
 	"github.com/MetaDandy/go-fiber-skeleton/config"
 	"github.com/MetaDandy/go-fiber-skeleton/middleware"
@@ -32,11 +33,11 @@ func SetupContainer() *Container {
 	userService := user.NewService(userRepo)
 
 	authRepo := authentication.NewRepo(config.DB)
-	authService := authentication.NewService(authRepo, userRepo, mailService)
+	authService := authentication.NewService(authRepo, userRepo, mailService, os.Getenv("APP_URL"))
 
 	AuthMiddleware = middleware.Jwt(authService)
 
-	authHandler := authentication.NewHandler(authService, AuthMiddleware)
+	authHandler := authentication.NewHandler(authService, AuthMiddleware, os.Getenv("URI_REDIRECT"))
 
 	userHandler := user.NewHandler(userService, AuthMiddleware)
 

@@ -24,6 +24,7 @@ type Repo interface {
 	AddOAuthProviderToUser(userID uuid.UUID, ap model.AuthProvider, al model.AuthLog, state string, provider string) error
 	SaveOAuthState(state, provider string) error
 	ValidateOAuthState(state, provider string) error
+	ConsumeOAuthStateAndLog(state, provider string, al model.AuthLog) error
 	GetOAuthProviderByState(state string) (string, error)
 	CreateSession(session model.Session) error
 	GetSessionByHash(hash string) (model.Session, error)
@@ -224,8 +225,8 @@ func (r *repo) SaveOAuthState(state, provider string) error {
 	return r.db.Create(&oauthState).Error
 }
 
-// ValidateOAuthState valida un estado de OAuth y lo consume (one-time use)
-// Retorna nil si válido, error si inválido/expirado/no encontrado
+// ValidateOAuthState validates an OAuth state and consumes it (one-time use)
+// Returns nil if valid, error if invalid/expired/not found
 func (r *repo) ValidateOAuthState(state, provider string) error {
 	var oauthState model.OAuthState
 
@@ -238,6 +239,26 @@ func (r *repo) ValidateOAuthState(state, provider string) error {
 
 	// Marcar como consumido (soft delete)
 	return r.db.Model(&oauthState).Update("deleted_at", time.Now()).Error
+}
+
+// ConsumeOAuthStateAndLog atomically consumes an OAuth state and creates an auth log
+// Used for the login-existing-provider case where user+provider already exist
+func (r *repo) ConsumeOAuthStateAndLog(state, provider string, al model.AuthLog) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// 1. Consumir el state (soft-delete)
+		if err := tx.Model(&model.OAuthState{}).
+			Where("state = ? AND provider = ? AND deleted_at IS NULL", state, provider).
+			Update("deleted_at", time.Now()).Error; err != nil {
+			return err
+		}
+
+		// 2. Crear auth log
+		if err := tx.Create(&al).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
 }
 
 // GetOAuthProviderByState retorna el provider asociado a un state válido
