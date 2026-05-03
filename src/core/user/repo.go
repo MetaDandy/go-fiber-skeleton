@@ -55,6 +55,9 @@ func (r *repo) FindAll(opts *helper.FindAllOptions) ([]model.User, int64, error)
 		)
 	}
 
+	// Ordering is explicit per repo - User defaults to created_at desc
+	query = query.Order("created_at desc")
+
 	var total int64
 	query, total = opts.ApplyFindAllOptions(query)
 
