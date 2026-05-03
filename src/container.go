@@ -33,11 +33,15 @@ func SetupContainer() *Container {
 	userService := user.NewService(userRepo)
 
 	authRepo := authentication.NewRepo(config.DB)
-	authService := authentication.NewService(authRepo, userRepo, mailService, os.Getenv("APP_URL"))
 
-	AuthMiddleware = middleware.Jwt(authService)
+	passwordSvc := authentication.NewPasswordService(authRepo, userRepo, mailService, os.Getenv("APP_URL"))
+	oauthSvc := authentication.NewOAuthService(authRepo, userRepo, os.Getenv("URI_REDIRECT"))
+	emailSvc := authentication.NewEmailService(authRepo, userRepo, mailService)
+	sessionSvc := authentication.NewSessionService(authRepo, userRepo)
 
-	authHandler := authentication.NewHandler(authService, AuthMiddleware, os.Getenv("URI_REDIRECT"))
+	AuthMiddleware = middleware.Jwt(sessionSvc)
+
+	authHandler := authentication.NewHandler(passwordSvc, oauthSvc, emailSvc, sessionSvc, AuthMiddleware)
 
 	userHandler := user.NewHandler(userService, AuthMiddleware)
 

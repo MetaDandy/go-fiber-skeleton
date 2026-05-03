@@ -1,14 +1,10 @@
 package authentication
 
 import (
-	"context"
-	"crypto/rand"
 	"time"
 
 	"github.com/MetaDandy/go-fiber-skeleton/api_error"
 	"github.com/MetaDandy/go-fiber-skeleton/helper"
-	"github.com/MetaDandy/go-fiber-skeleton/src/enum"
-	"github.com/MetaDandy/go-fiber-skeleton/src/service/auth"
 	"github.com/MetaDandy/go-fiber-skeleton/src/service/cookie"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/limiter"
@@ -41,16 +37,20 @@ type Handler interface {
 }
 
 type handler struct {
-	service     Service
+	passwordSvc PasswordService
+	oauthSvc    OAuthService
+	emailSvc    EmailService
+	sessionSvc  SessionService
 	jwtMiddle   fiber.Handler
-	redirectURL string
 }
 
-func NewHandler(service Service, jwtMiddle fiber.Handler, redirectURL string) Handler {
+func NewHandler(passwordSvc PasswordService, oauthSvc OAuthService, emailSvc EmailService, sessionSvc SessionService, jwtMiddle fiber.Handler) Handler {
 	return &handler{
-		service:     service,
+		passwordSvc: passwordSvc,
+		oauthSvc:    oauthSvc,
+		emailSvc:    emailSvc,
+		sessionSvc:  sessionSvc,
 		jwtMiddle:   jwtMiddle,
-		redirectURL: redirectURL,
 	}
 }
 
@@ -79,13 +79,11 @@ func (h *handler) UserAuthProviders(c fiber.Ctx) error {
 		return api_error.BadRequest("Email parameter is required")
 	}
 
-	providers, err := h.service.UserAuthProviders(email)
+	providers, err := h.passwordSvc.UserAuthProviders(email)
 	if err != nil {
-		// Si el error es un *api_error.Error, retornarlo directamente
 		if apiErr, ok := err.(*api_error.Error); ok {
 			return apiErr
 		}
-		// Si es otro tipo de error, envolverlo
 		return api_error.InternalServerError("Could not retrieve authentication providers").WithErr(err)
 	}
 
@@ -104,12 +102,10 @@ func (h *handler) SignUpPassword(c fiber.Ctx) error {
 		return err
 	}
 
-	// Si el error es un *api_error.Error, retornarlo directamente
-	if err := h.service.SignUpPassword(input); err != nil {
+	if err := h.passwordSvc.SignUpPassword(input); err != nil {
 		if apiErr, ok := err.(*api_error.Error); ok {
 			return apiErr
 		}
-		// Si es otro tipo de error, envolverlo
 		return api_error.InternalServerError(err.Error()).WithErr(err)
 	}
 
@@ -124,14 +120,13 @@ func (h *handler) LoginPassword(c fiber.Ctx) error {
 		return api_error.BadRequest("Invalid request body")
 	}
 
-	// Extraer IP y User-Agent del contexto
 	input.Ip, input.UserAgent = helper.GetClientDetails(c)
 
 	if err := input.Validate(); err != nil {
 		return err
 	}
 
-	token, refreshToken, err := h.service.LoginPassword(input)
+	token, refreshToken, err := h.passwordSvc.LoginPassword(input)
 	if err != nil {
 		if apiErr, ok := err.(*api_error.Error); ok {
 			return apiErr
@@ -139,7 +134,6 @@ func (h *handler) LoginPassword(c fiber.Ctx) error {
 		return api_error.InternalServerError("LoginPassword failed").WithErr(err)
 	}
 
-	// Setear cookies con los tokens
 	cookie.SetAuthTokenCookie(c, token)
 	cookie.SetRefreshTokenCookie(c, refreshToken)
 
@@ -149,7 +143,6 @@ func (h *handler) LoginPassword(c fiber.Ctx) error {
 }
 
 func (h *handler) RefreshToken(c fiber.Ctx) error {
-	// 1. Obtener el refresh token de la cookie
 	refreshToken := c.Cookies(cookie.CookieNameRefreshToken)
 	if refreshToken == "" {
 		return api_error.Unauthorized("No refresh token provided")
@@ -157,8 +150,7 @@ func (h *handler) RefreshToken(c fiber.Ctx) error {
 
 	ip, userAgent := helper.GetClientDetails(c)
 
-	// 2. Llamar al servicio para rotar el token
-	newToken, newRefreshToken, err := h.service.RefreshToken(refreshToken, ip, userAgent)
+	newToken, newRefreshToken, err := h.sessionSvc.RefreshToken(refreshToken, ip, userAgent)
 	if err != nil {
 		if apiErr, ok := err.(*api_error.Error); ok {
 			return apiErr
@@ -166,7 +158,6 @@ func (h *handler) RefreshToken(c fiber.Ctx) error {
 		return api_error.Unauthorized("Could not refresh token").WithErr(err)
 	}
 
-	// 3. Setear las nuevas cookies
 	cookie.SetAuthTokenCookie(c, newToken)
 	cookie.SetRefreshTokenCookie(c, newRefreshToken)
 
@@ -176,14 +167,12 @@ func (h *handler) RefreshToken(c fiber.Ctx) error {
 }
 
 func (h *handler) Logout(c fiber.Ctx) error {
-	// 1. Obtener el refresh token para invalidar la sesión en DB
 	refreshToken := cookie.GetRefreshTokenCookie(c)
 
 	if refreshToken != "" {
-		_ = h.service.Logout(refreshToken)
+		_ = h.sessionSvc.Logout(refreshToken)
 	}
 
-	// 2. Limpiar todas las cookies de autenticación
 	cookie.ClearAllAuthCookies(c)
 
 	return c.JSON(fiber.Map{
@@ -197,7 +186,7 @@ func (h *handler) VerifyEmail(c fiber.Ctx) error {
 		return api_error.BadRequest("Token is required")
 	}
 
-	if err := h.service.VerifyEmail(token); err != nil {
+	if err := h.emailSvc.VerifyEmail(token); err != nil {
 		if apiErr, ok := err.(*api_error.Error); ok {
 			return apiErr
 		}
@@ -216,7 +205,7 @@ func (h *handler) ResendVerificationEmail(c fiber.Ctx) error {
 		return api_error.BadRequest("Email is required")
 	}
 
-	if err := h.service.ResendVerificationEmail(email); err != nil {
+	if err := h.emailSvc.ResendVerificationEmail(email); err != nil {
 		if apiErr, ok := err.(*api_error.Error); ok {
 			return apiErr
 		}
@@ -234,21 +223,19 @@ func (h *handler) ForgotPassword(c fiber.Ctx) error {
 		return api_error.BadRequest("Invalid request body: " + err.Error()).WithErr(err)
 	}
 
-	// Extraer IP y User-Agent del contexto usando helper
 	input.Ip, _ = helper.GetClientDetails(c)
 
 	if err := input.Validate(); err != nil {
 		return api_error.BadRequest("Invalid request body: " + err.Error()).WithErr(err)
 	}
 
-	if err := h.service.ForgotPassword(input); err != nil {
+	if err := h.passwordSvc.ForgotPassword(input); err != nil {
 		if apiErr, ok := err.(*api_error.Error); ok {
 			return apiErr
 		}
 		return api_error.InternalServerError("Could not process forgot password request").WithErr(err)
 	}
 
-	// Retornar mensaje genérico por seguridad (no revelar si el email existe)
 	return c.JSON(fiber.Map{
 		"message": "If an account exists with that email, you will receive password reset instructions",
 	})
@@ -260,14 +247,13 @@ func (h *handler) ResetPassword(c fiber.Ctx) error {
 		return api_error.BadRequest("Invalid request body: " + err.Error()).WithErr(err)
 	}
 
-	// Extraer IP y User-Agent del contexto usando helper
 	input.Ip, input.UserAgent = helper.GetClientDetails(c)
 
 	if err := input.Validate(); err != nil {
 		return api_error.BadRequest("Invalid request body: " + err.Error()).WithErr(err)
 	}
 
-	if err := h.service.ResetPassword(input); err != nil {
+	if err := h.passwordSvc.ResetPassword(input); err != nil {
 		if apiErr, ok := err.(*api_error.Error); ok {
 			return apiErr
 		}
@@ -289,22 +275,19 @@ func (h *handler) ChangePassword(c fiber.Ctx) error {
 		return err
 	}
 
-	// Obtener userID desde el middleware JWT
 	userIDStr, ok := c.Locals("user_id").(string)
 	if !ok || userIDStr == "" {
 		return api_error.Unauthorized("User not authenticated")
 	}
 
-	// Validar que sea un UUID válido
 	uid, err := uuid.Parse(userIDStr)
 	if err != nil {
 		return api_error.BadRequest("Invalid user ID format in session")
 	}
 
-	// Extraer IP y User-Agent usando helper
 	ip, userAgent := helper.GetClientDetails(c)
 
-	if err := h.service.ChangePassword(uid, input, ip, userAgent); err != nil {
+	if err := h.passwordSvc.ChangePassword(uid, input, ip, userAgent); err != nil {
 		if apiErr, ok := err.(*api_error.Error); ok {
 			return apiErr
 		}
@@ -316,52 +299,23 @@ func (h *handler) ChangePassword(c fiber.Ctx) error {
 	})
 }
 
-// generateState genera un estado aleatorio para CSRF protection
-func generateState() string {
-	state := make([]byte, 32)
-	_, err := rand.Read(state)
-	if err != nil {
-		// Fallback should never happen, but handle gracefully
-		return ""
-	}
-	return string(state)
-}
-
-// OAuthLogin inicia el flujo de login OAuth
-// GET /auth/login/:provider
+// OAuthLogin initiates the OAuth login flow
 func (h *handler) OAuthLogin(c fiber.Ctx) error {
 	provider := c.Params("provider")
 
-	// Validar proveedor
-	if !enum.IsValidAuthProvider(provider) {
-		return api_error.BadRequest("Unsupported oauth provider")
-	}
-
-	// Cargar credenciales
-	creds, err := auth.LoadCredentials(provider)
+	// Call OAuth service to get the authorization URL
+	authURL, err := h.oauthSvc.OAuthLogin(provider)
 	if err != nil {
-		return api_error.InternalServerError("Could not load provider credentials").WithErr(err)
-	}
-
-	// Generar estado para CSRF
-	state := generateState()
-
-	// Guardar estado en BD para validación en callback
-	if err := h.service.SaveOAuthState(state, provider); err != nil {
-		return api_error.InternalServerError("Failed to save OAuth state").WithErr(err)
-	}
-
-	// Obtener URL de autorización
-	authURL, err := auth.GetAuthURL(provider, creds, h.redirectURL, state)
-	if err != nil {
-		return api_error.InternalServerError("Could not generate auth URL").WithErr(err)
+		if apiErr, ok := err.(*api_error.Error); ok {
+			return apiErr
+		}
+		return api_error.InternalServerError("Could not initiate OAuth login").WithErr(err)
 	}
 
 	return c.Redirect().To(authURL)
 }
 
-// OAuthCallback maneja el callback de OAuth desde el proveedor
-// GET /auth/callback?code=xxx&state=yyy
+// OAuthCallback handles the OAuth callback from the provider
 func (h *handler) OAuthCallback(c fiber.Ctx) error {
 	code := c.Query("code")
 	state := c.Query("state")
@@ -370,53 +324,10 @@ func (h *handler) OAuthCallback(c fiber.Ctx) error {
 		return api_error.BadRequest("Missing required parameters: code or state")
 	}
 
-	// Obtener el provider desde BD usando el state (CSRF token)
-	provider, err := h.service.GetOAuthProviderByState(state)
-	if err != nil {
-		return api_error.BadRequest("Invalid or expired OAuth state")
-	}
-
-	// Validar que el provider sea válido
-	if !enum.IsValidAuthProvider(provider) {
-		return api_error.BadRequest("Invalid OAuth provider")
-	}
-
-	// Cargar credenciales del proveedor (desde servicio auth)
-	creds, err := auth.LoadCredentials(provider)
-	if err != nil {
-		return api_error.InternalServerError("Could not load provider credentials").WithErr(err)
-	}
-
-	// Intercambiar código por token con el proveedor
-	token, err := auth.ExchangeCode(provider, creds, h.redirectURL, code)
-	if err != nil {
-		return api_error.InternalServerError("Failed to exchange authorization code").WithErr(err)
-	}
-
-	// Obtener información del usuario desde el proveedor
-	userInfo, err := auth.GetUserInfo(context.Background(), provider, token)
-	if err != nil {
-		return api_error.InternalServerError("Failed to retrieve user information").WithErr(err)
-	}
-
-	// Preparar DTO interno para el servicio
 	ip, userAgent := helper.GetClientDetails(c)
-	oauthInput := OAuthCallbackInternal{
-		Provider: provider,
-		State:    state, // Pasar el state para validación y consumo atómico en el servicio
-		UserInfo: OAuthUserInfo{
-			ID:    userInfo.ID,
-			Email: userInfo.Email,
-			Name:  userInfo.Name,
-			Image: userInfo.Image,
-		},
-		Ip:        ip,
-		UserAgent: userAgent,
-	}
 
-	// Llamar al servicio para crear o hacer login del usuario
-	// Ahora el servicio se encarga de validar el state ANTES de persistir
-	jwtToken, refreshToken, err := h.service.OAuthCreateOrLogin(oauthInput)
+	// Call OAuth service to handle the callback
+	jwtToken, refreshToken, err := h.oauthSvc.OAuthCallback(code, state, ip, userAgent)
 	if err != nil {
 		if apiErr, ok := err.(*api_error.Error); ok {
 			return apiErr
@@ -424,14 +335,12 @@ func (h *handler) OAuthCallback(c fiber.Ctx) error {
 		return api_error.InternalServerError("Authentication failed").WithErr(err)
 	}
 
-	// Setear cookies con los tokens
+	// Set cookies with the tokens
 	cookie.SetAuthTokenCookie(c, jwtToken)
 	cookie.SetRefreshTokenCookie(c, refreshToken)
 
-	// Retornar respuesta exitosa
 	return c.JSON(fiber.Map{
-		"success":  true,
-		"message":  "login successful",
-		"provider": provider,
+		"success": true,
+		"message": "login successful",
 	})
 }
