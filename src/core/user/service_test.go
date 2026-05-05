@@ -7,6 +7,7 @@ import (
 	"github.com/MetaDandy/go-fiber-skeleton/api_error"
 	"github.com/MetaDandy/go-fiber-skeleton/helper"
 	"github.com/MetaDandy/go-fiber-skeleton/src/model"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -55,9 +56,10 @@ func TestServiceErrors(t *testing.T) {
 		mockRepo := new(MockRepo)
 		service := NewService(mockRepo)
 		
-		mockRepo.On("FindByID", "non-existent").Return(model.User{}, errors.New("not found"))
+		nonExistentID := uuid.New().String()
+		mockRepo.On("FindByID", nonExistentID).Return(model.User{}, errors.New("not found"))
 		
-		user, apiErr := service.FindByID("non-existent")
+		user, apiErr := service.FindByID(nonExistentID)
 		
 		assert.Nil(t, user)
 		assert.NotNil(t, apiErr)

@@ -1,9 +1,11 @@
 package permission
 
 import (
+	"context"
 	"errors"
 
 	"github.com/MetaDandy/go-fiber-skeleton/helper"
+	"github.com/MetaDandy/go-fiber-skeleton/src/generated"
 	"github.com/MetaDandy/go-fiber-skeleton/src/model"
 	"gorm.io/gorm"
 )
@@ -23,24 +25,43 @@ func NewRepo(db *gorm.DB) *repo {
 }
 
 func (r *repo) FindByID(id string) (model.Permission, error) {
-	var permission model.Permission
-	err := r.db.First(&permission, "id = ?", id).Error
-	return permission, err
+	return gorm.G[model.Permission](r.db).Where(generated.Permission.ID.Eq(id)).First(context.Background())
 }
 
 func (r *repo) FindAll(opts *helper.FindAllOptions) ([]model.Permission, int64, error) {
 	var finded []model.Permission
-	query := r.db.Model(model.Permission{})
+	
+	// Build the base query with conditions
+	query := r.db.Model(&model.Permission{})
 
 	if opts.Search != "" {
+		searchPattern := "%" + opts.Search + "%"
 		query = query.Where(
-			`name ILIKE ? OR description ILIKE ?`,
-			"%"+opts.Search+"%",
-			"%"+opts.Search+"%",
+			generated.Permission.Name.ILike(searchPattern),
+			generated.Permission.Description.ILike(searchPattern),
 		)
 	}
+
+	// Count total using a SEPARATE query to avoid breaking the chain
 	var total int64
-	query, total = opts.ApplyFindAllOptions(query)
+	countQuery := r.db.Model(&model.Permission{})
+	if opts.Search != "" {
+		searchPattern := "%" + opts.Search + "%"
+		countQuery = countQuery.Where(
+			generated.Permission.Name.ILike(searchPattern),
+			generated.Permission.Description.ILike(searchPattern),
+		)
+	}
+	if err := countQuery.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Apply Limit/Offset - use defaults if not set
+	limit := int(opts.Limit)
+	if limit == 0 {
+		limit = 10 // Default limit
+	}
+	query = query.Limit(limit).Offset(int(opts.Offset))
 
 	err := query.Find(&finded).Error
 	return finded, total, err
@@ -53,7 +74,7 @@ func (r *repo) AllExists(ids []string) error {
 
 	var count int64
 	if err := r.db.Model(&model.Permission{}).
-		Where("id IN ?", ids).
+		Where(generated.Permission.ID.In(ids...)).
 		Count(&count).Error; err != nil {
 		return err
 	}

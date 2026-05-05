@@ -56,7 +56,7 @@ func (s *sessionService) RefreshToken(refreshToken string, ip string, userAgent 
 		return "", "", api_error.Unauthorized("User not found")
 	}
 
-	permissions, err := s.repo.GetUserPermissions(user.ID.String())
+	permissions, err := s.repo.GetUserPermissions(user.ID)
 	if err != nil {
 		return "", "", api_error.InternalServerError("Failed to get user permissions")
 	}

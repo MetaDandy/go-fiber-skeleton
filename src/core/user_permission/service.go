@@ -55,17 +55,8 @@ func removeDuplicatesBetweenArrays(add, remove []string) ([]string, []string) {
 }
 
 func (s *service) UpdateDetails(userID string, input UpdateDetails) error {
-	add := input.Add
-	remove := input.Remove
-
-	if len(add) == 0 && len(remove) == 0 {
+	if len(input.Add) == 0 && len(input.Remove) == 0 {
 		return api_error.BadRequest("At least one of add or remove must contain one element")
-	}
-
-	if len(add) > 0 {
-		if err := s.permissionChecker.AllExists(add); err != nil {
-			return err
-		}
 	}
 
 	parsedUserID, err := uuid.Parse(userID)
@@ -73,7 +64,13 @@ func (s *service) UpdateDetails(userID string, input UpdateDetails) error {
 		return api_error.BadRequest("Invalid user ID")
 	}
 
-	add, remove = removeDuplicatesBetweenArrays(add, remove)
+	if len(input.Add) > 0 {
+		if err := s.permissionChecker.AllExists(input.Add); err != nil {
+			return err
+		}
+	}
+
+	add, remove := removeDuplicatesBetweenArrays(input.Add, input.Remove)
 
 	tx := s.repo.BeginTx()
 	if tx.Error != nil {
@@ -96,7 +93,7 @@ func (s *service) UpdateDetails(userID string, input UpdateDetails) error {
 		})
 	}
 
-	if err := s.repo.UpdatePermissionsTx(tx, userID, userPermissionsToAdd, remove); err != nil {
+	if err := s.repo.UpdatePermissionsTx(tx, parsedUserID, userPermissionsToAdd, remove); err != nil {
 		tx.Rollback()
 		return err
 	}

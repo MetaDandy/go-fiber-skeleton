@@ -31,7 +31,7 @@ type PasswordService interface {
 	LoginPassword(input LoginPassword) (string, string, error)
 	ForgotPassword(input ForgotPassword) error
 	ResetPassword(input ResetPassword) error
-	ChangePassword(userID uuid.UUID, input ChangePassword, ip string, userAgent string) error
+	ChangePassword(userID string, input ChangePassword, ip string, userAgent string) error
 }
 
 type passwordService struct {
@@ -56,7 +56,7 @@ func (s *passwordService) UserAuthProviders(email string) ([]string, error) {
 		return []string{}, err
 	}
 
-	providers := s.repo.UserAuthProviders(user.ID.String())
+	providers := s.repo.UserAuthProviders(user.ID)
 	if user.Password != nil {
 		providers = append(providers, "password")
 	}
@@ -173,7 +173,7 @@ func (s *passwordService) LoginPassword(input LoginPassword) (string, string, er
 		return "", "", api_error.Forbidden("Please verify your email before logging in")
 	}
 
-	permissions, err := s.repo.GetUserPermissions(user.ID.String())
+	permissions, err := s.repo.GetUserPermissions(user.ID)
 	if err != nil {
 		log.Printf("failed to retrieve user permissions: %v", err)
 		return "", "", api_error.InternalServerError("Failed to retrieve permissions").WithErr(err)
@@ -317,8 +317,7 @@ func (s *passwordService) ResetPassword(input ResetPassword) error {
 	}
 
 	// EL REPO MANEJA LA TRANSACCIÓN
-	userIDStr := prt.UserID.String()
-	if err := s.repo.CompletePasswordReset(userIDStr, string(passwordHash), al); err != nil {
+	if err := s.repo.CompletePasswordReset(prt.UserID, string(passwordHash), al); err != nil {
 		log.Printf("failed to complete password reset: %v", err)
 		return api_error.InternalServerError("Could not reset password")
 	}
@@ -326,10 +325,9 @@ func (s *passwordService) ResetPassword(input ResetPassword) error {
 	return nil
 }
 
-func (s *passwordService) ChangePassword(userID uuid.UUID, input ChangePassword, ip string, userAgent string) error {
+func (s *passwordService) ChangePassword(userID string, input ChangePassword, ip string, userAgent string) error {
 	// Obtener el usuario
-	userIDStr := userID.String()
-	user, err := s.uRepo.FindByID(userIDStr)
+	user, err := s.uRepo.FindByID(userID)
 	if err != nil {
 		return api_error.Unauthorized("User not found")
 	}
@@ -340,7 +338,7 @@ func (s *passwordService) ChangePassword(userID uuid.UUID, input ChangePassword,
 		al := model.AuthLog{
 			ID:        uuid.New(),
 			Event:     enum.PasswordChangeFailure,
-			UserID:    userID,
+			UserID:    uuid.MustParse(userID),
 			Ip:        ip,
 			UserAgent: userAgent,
 		}
@@ -360,13 +358,13 @@ func (s *passwordService) ChangePassword(userID uuid.UUID, input ChangePassword,
 	al := model.AuthLog{
 		ID:        uuid.New(),
 		Event:     enum.PasswordChangeSuccess,
-		UserID:    userID,
+		UserID:    uuid.MustParse(userID),
 		Ip:        ip,
 		UserAgent: userAgent,
 	}
 
 	// Actualizar contraseña
-	if err := s.uRepo.UpdatePassword(userIDStr, string(passwordHash)); err != nil {
+	if err := s.uRepo.UpdatePassword(userID, string(passwordHash)); err != nil {
 		log.Printf("failed to update user password: %v", err)
 		return api_error.InternalServerError("Could not change password")
 	}

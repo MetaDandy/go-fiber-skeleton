@@ -54,7 +54,7 @@ func (s *service) Create(input Create) error {
 			return err
 		}
 
-		parentRole, err := s.repo.FindByID(parsedRoleID.String())
+		parentRole, err := s.repo.FindByID(parsedRoleID)
 		if err != nil {
 			return err
 		}
@@ -67,8 +67,6 @@ func (s *service) Create(input Create) error {
 			parentEffectiveMap[rep.PermissionID] = struct{}{}
 		}
 
-		// Nueva regla:
-		// si al menos un permiso ya existe en el árbol del padre, error.
 		for _, permissionID := range input.Permissions {
 			if _, exists := parentEffectiveMap[permissionID]; exists {
 				return api_error.BadRequest(
@@ -96,7 +94,6 @@ func (s *service) Create(input Create) error {
 
 	roleEffectivePermissions := make([]model.RoleEffectivePermission, 0, len(parentEffectivePermissions)+len(input.Permissions))
 
-	// heredados del árbol del padre
 	for _, inherited := range parentEffectivePermissions {
 		roleEffectivePermissions = append(roleEffectivePermissions, model.RoleEffectivePermission{
 			ID:           uuid.New(),
@@ -106,7 +103,6 @@ func (s *service) Create(input Create) error {
 		})
 	}
 
-	// propios del rol nuevo
 	for _, permissionID := range input.Permissions {
 		roleEffectivePermissions = append(roleEffectivePermissions, model.RoleEffectivePermission{
 			ID:           uuid.New(),
@@ -120,7 +116,12 @@ func (s *service) Create(input Create) error {
 }
 
 func (s *service) FindByID(id string) (*response.Role, error) {
-	role, err := s.repo.FindByID(id)
+	parsedID, err := uuid.Parse(id)
+	if err != nil {
+		return nil, api_error.BadRequest("Invalid role ID: " + id)
+	}
+
+	role, err := s.repo.FindByID(parsedID)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +148,7 @@ func (s *service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[resp
 	}, nil
 }
 
-func removeDuplicatesBetweenArrays(add, remove []string) ([]string, []string) {
+func removeDuplicatesBetweenStringArrays(add, remove []string) ([]string, []string) {
 	removeSet := make(map[string]struct{}, len(remove))
 	for _, id := range remove {
 		removeSet[id] = struct{}{}
@@ -176,6 +177,11 @@ func removeDuplicatesBetweenArrays(add, remove []string) ([]string, []string) {
 }
 
 func (s *service) UpdateHeader(id string, input UpdateHeader) error {
+	parsedID, err := uuid.Parse(id)
+	if err != nil {
+		return api_error.BadRequest("Invalid role ID: " + id)
+	}
+
 	tx := s.repo.BeginTx()
 	if tx.Error != nil {
 		return tx.Error
@@ -188,7 +194,7 @@ func (s *service) UpdateHeader(id string, input UpdateHeader) error {
 		}
 	}()
 
-	role, err := s.repo.FindByIDTx(tx, id)
+	role, err := s.repo.FindByIDTx(tx, parsedID)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -249,6 +255,11 @@ func (s *service) UpdateDetails(id string, input UpdateDetails) error {
 		}
 	}
 
+	parsedID, err := uuid.Parse(id)
+	if err != nil {
+		return api_error.BadRequest("Invalid role ID: " + id)
+	}
+
 	tx := s.repo.BeginTx()
 	if tx.Error != nil {
 		return tx.Error
@@ -261,13 +272,14 @@ func (s *service) UpdateDetails(id string, input UpdateDetails) error {
 		}
 	}()
 
-	role, err := s.repo.FindByIDTx(tx, id)
+	role, err := s.repo.FindByIDTx(tx, parsedID)
 	if err != nil {
 		tx.Rollback()
 		return err
 	}
 
-	add, remove = removeDuplicatesBetweenArrays(add, remove)
+	// Remove duplicates between add and remove
+	add, remove = removeDuplicatesBetweenStringArrays(add, remove)
 
 	// mapa de permisos directos actuales
 	currentDirect := make(map[string]struct{}, len(role.Role_permissions))
@@ -287,7 +299,7 @@ func (s *service) UpdateDetails(id string, input UpdateDetails) error {
 
 	// Validar adds contra ancestros heredados
 	if role.RoleID != nil && len(add) > 0 {
-		parentRole, err := s.repo.FindByIDTx(tx, role.RoleID.String())
+		parentRole, err := s.repo.FindByIDTx(tx, *role.RoleID)
 		if err != nil {
 			tx.Rollback()
 			return err
@@ -321,7 +333,7 @@ func (s *service) UpdateDetails(id string, input UpdateDetails) error {
 	}
 
 	// Regla: el rol actual debe conservar al menos un permiso directo propio
-	remainingDirectCount, err := s.repo.CountDirectPermissionsNotInSetTx(tx, role.ID.String(), remove)
+	remainingDirectCount, err := s.repo.CountDirectPermissionsNotInSetTx(tx, role.ID, remove)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -336,7 +348,7 @@ func (s *service) UpdateDetails(id string, input UpdateDetails) error {
 	// Validar add con descendientes si strictMode = false
 	if !input.StrictMode {
 		for _, permissionID := range add {
-			descendants, err := s.repo.DescendantsWithDirectPermissionTx(tx, id, permissionID)
+			descendants, err := s.repo.DescendantsWithDirectPermissionTx(tx, parsedID, permissionID)
 			if err != nil {
 				tx.Rollback()
 				return err
@@ -360,7 +372,7 @@ func (s *service) UpdateDetails(id string, input UpdateDetails) error {
 		})
 	}
 
-	if err := s.repo.UpdateRolePermissionsTx(tx, id, rolePermissionsToAdd, remove); err != nil {
+	if err := s.repo.UpdateRolePermissionsTx(tx, parsedID, rolePermissionsToAdd, remove); err != nil {
 		tx.Rollback()
 		return err
 	}
@@ -385,7 +397,7 @@ func (s *service) UpdateDetails(id string, input UpdateDetails) error {
 }
 
 func (s *service) propagateAddTx(tx *gorm.DB, roleID uuid.UUID, permissionID string, strictMode bool) error {
-	descendants, err := s.repo.FindDescendantsOrderedTx(tx, roleID.String())
+	descendants, err := s.repo.FindDescendantsOrderedTx(tx, roleID)
 	if err != nil {
 		return err
 	}
@@ -408,11 +420,11 @@ func (s *service) propagateAddTx(tx *gorm.DB, roleID uuid.UUID, permissionID str
 	}
 
 	if strictMode && len(descendants) > 0 {
-		descendantIDs := make([]string, 0, len(descendants))
-		idToName := make(map[string]string)
+		descendantIDs := make([]uuid.UUID, 0, len(descendants))
+		idToName := make(map[uuid.UUID]string)
 		for _, d := range descendants {
-			descendantIDs = append(descendantIDs, d.ID.String())
-			idToName[d.ID.String()] = d.Name
+			descendantIDs = append(descendantIDs, d.ID)
+			idToName[d.ID] = d.Name
 		}
 
 		rolesWithDirect, err := s.repo.GetRolesWithDirectPermissionTx(tx, descendantIDs, permissionID)
@@ -447,23 +459,22 @@ func (s *service) propagateAddTx(tx *gorm.DB, roleID uuid.UUID, permissionID str
 }
 
 func (s *service) propagateRemoveTx(tx *gorm.DB, roleID uuid.UUID, permissionID string) error {
-	descendants, err := s.repo.FindDescendantsOrderedTx(tx, roleID.String())
+	descendants, err := s.repo.FindDescendantsOrderedTx(tx, roleID)
 	if err != nil {
 		return err
 	}
 
-	roleIDs := make([]string, 0, len(descendants)+1)
-	roleIDs = append(roleIDs, roleID.String())
+	roleIDs := make([]uuid.UUID, 0, len(descendants)+1)
+	roleIDs = append(roleIDs, roleID)
 
 	for _, d := range descendants {
-		roleIDs = append(roleIDs, d.ID.String())
+		roleIDs = append(roleIDs, d.ID)
 	}
 
-	return s.repo.DeleteEffectivePermissionsBySourceAndRolesTx(tx, roleIDs, permissionID, roleID.String())
+	return s.repo.DeleteEffectivePermissionsBySourceAndRolesTx(tx, roleIDs, permissionID, roleID)
 }
 
 func (s *service) rebuildSingleRoleEffectivePermissionsTx(tx *gorm.DB, role model.Role) error {
-	// borrar todos los effective actuales del rol
 	if err := tx.
 		Where("role_id = ?", role.ID).
 		Delete(&model.RoleEffectivePermission{}).Error; err != nil {
@@ -472,9 +483,8 @@ func (s *service) rebuildSingleRoleEffectivePermissionsTx(tx *gorm.DB, role mode
 
 	seen := make(map[string]struct{})
 
-	// 1. heredar del nuevo padre
 	if role.RoleID != nil {
-		parentRole, err := s.repo.FindByIDTx(tx, role.RoleID.String())
+		parentRole, err := s.repo.FindByIDTx(tx, *role.RoleID)
 		if err != nil {
 			return err
 		}
@@ -497,7 +507,6 @@ func (s *service) rebuildSingleRoleEffectivePermissionsTx(tx *gorm.DB, role mode
 		}
 	}
 
-	// 2. reinsertar directos propios del rol
 	for _, rp := range role.Role_permissions {
 		if _, exists := seen[rp.PermissionID]; exists {
 			continue
@@ -517,8 +526,9 @@ func (s *service) rebuildSingleRoleEffectivePermissionsTx(tx *gorm.DB, role mode
 
 	return nil
 }
+
 func (s *service) rebuildRoleTreeTx(tx *gorm.DB, roleID uuid.UUID) error {
-	role, err := s.repo.FindByIDTx(tx, roleID.String())
+	role, err := s.repo.FindByIDTx(tx, roleID)
 	if err != nil {
 		return err
 	}
@@ -527,15 +537,13 @@ func (s *service) rebuildRoleTreeTx(tx *gorm.DB, roleID uuid.UUID) error {
 		return err
 	}
 
-	// Traemos todos los descendientes en el orden jerárquico ya arreglado por WITH RECURSIVE.
-	children, err := s.repo.FindDescendantsOrderedTx(tx, roleID.String())
+	children, err := s.repo.FindDescendantsOrderedTx(tx, roleID)
 	if err != nil {
 		return err
 	}
 
-	// Al recorrer este arreglo de arriba hacia abajo, cada hijo dependerá del efectivo de sus padres frescos.
 	for _, child := range children {
-		freshChild, err := s.repo.FindByIDTx(tx, child.ID.String())
+		freshChild, err := s.repo.FindByIDTx(tx, child.ID)
 		if err != nil {
 			return err
 		}
@@ -548,7 +556,7 @@ func (s *service) rebuildRoleTreeTx(tx *gorm.DB, roleID uuid.UUID) error {
 }
 
 func (s *service) normalizeDirectPermissionsAgainstParentTx(tx *gorm.DB, roleID uuid.UUID, strictMode bool) error {
-	role, err := s.repo.FindByIDTx(tx, roleID.String())
+	role, err := s.repo.FindByIDTx(tx, roleID)
 	if err != nil {
 		return err
 	}
@@ -557,12 +565,11 @@ func (s *service) normalizeDirectPermissionsAgainstParentTx(tx *gorm.DB, roleID 
 		return nil
 	}
 
-	parentRole, err := s.repo.FindByIDTx(tx, role.RoleID.String())
+	parentRole, err := s.repo.FindByIDTx(tx, *role.RoleID)
 	if err != nil {
 		return err
 	}
 
-	// permisos que el nuevo árbol ya le aporta
 	parentEffectiveMap := make(map[string]string, len(parentRole.Role_effective_permissions))
 	duplicatedPermissionIDs := make([]string, 0)
 
@@ -570,14 +577,12 @@ func (s *service) normalizeDirectPermissionsAgainstParentTx(tx *gorm.DB, roleID 
 		parentEffectiveMap[ep.PermissionID] = ep.SourceRoleID.String()
 	}
 
-	// detectar cuáles directos del hijo chocan con el nuevo árbol
 	for _, rp := range role.Role_permissions {
 		if _, exists := parentEffectiveMap[rp.PermissionID]; exists {
 			duplicatedPermissionIDs = append(duplicatedPermissionIDs, rp.PermissionID)
 		}
 	}
 
-	// si no hay conflictos, no hay nada que hacer
 	if len(duplicatedPermissionIDs) == 0 {
 		return nil
 	}
@@ -586,8 +591,7 @@ func (s *service) normalizeDirectPermissionsAgainstParentTx(tx *gorm.DB, roleID 
 		return api_error.BadRequest("The new parent role already provides one or more identical permissions currently assigned directly to this role. Please remove these overlapped permissions manually or send strict_mode=true to automatically override them.")
 	}
 
-	// regla nueva: el rol debe conservar al menos un permiso directo propio
-	remainingDirectCount, err := s.repo.CountDirectPermissionsNotInSetTx(tx, role.ID.String(), duplicatedPermissionIDs)
+	remainingDirectCount, err := s.repo.CountDirectPermissionsNotInSetTx(tx, role.ID, duplicatedPermissionIDs)
 	if err != nil {
 		return err
 	}
@@ -596,11 +600,8 @@ func (s *service) normalizeDirectPermissionsAgainstParentTx(tx *gorm.DB, roleID 
 		return api_error.BadRequest("Role would be left with zero direct permissions due to overlap with the new parent role.")
 	}
 
-	// para cada permiso que ahora será heredado:
-	// 1. borrar de rolepermissions
-	// 2. actualizar source_role_id en effective en vez de delete+insert
 	for _, permissionID := range duplicatedPermissionIDs {
-		if err := s.repo.DeleteDirectPermissionTx(tx, role.ID.String(), permissionID); err != nil {
+		if err := s.repo.DeleteDirectPermissionTx(tx, role.ID, permissionID); err != nil {
 			return err
 		}
 
@@ -608,10 +609,10 @@ func (s *service) normalizeDirectPermissionsAgainstParentTx(tx *gorm.DB, roleID 
 
 		if err := s.repo.UpdateEffectivePermissionSourceTx(
 			tx,
-			role.ID.String(),
+			role.ID,
 			permissionID,
-			role.ID.String(),
-			newSourceRoleID,
+			role.ID,
+			uuid.MustParse(newSourceRoleID),
 		); err != nil {
 			return err
 		}

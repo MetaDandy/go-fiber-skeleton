@@ -50,11 +50,11 @@ func SetupContainer() *Container {
 	permissionHandler := permission.NewHandler(permissionService, AuthMiddleware)
 
 	roleRepo := role.NewRepo(config.DB)
-	roleService := role.NewService(roleRepo, role.PermissionChecker(permissionService))
+	roleService := role.NewService(roleRepo, permissionRepo)
 	roleHandler := role.NewHandler(roleService, AuthMiddleware)
 
 	userPermissionRepo := user_permission.NewRepo(config.DB)
-	userPermissionService := user_permission.NewService(userPermissionRepo, user_permission.PermissionChecker(permissionService))
+	userPermissionService := user_permission.NewService(userPermissionRepo, permissionRepo)
 	userPermissionHandler := user_permission.NewHandler(userPermissionService, AuthMiddleware)
 
 	return &Container{

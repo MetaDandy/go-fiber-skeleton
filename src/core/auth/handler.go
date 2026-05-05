@@ -8,7 +8,6 @@ import (
 	"github.com/MetaDandy/go-fiber-skeleton/src/service/cookie"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/limiter"
-	"github.com/google/uuid"
 )
 
 // authRateLimiter is a package-level rate limiter shared across auth routes
@@ -280,14 +279,9 @@ func (h *handler) ChangePassword(c fiber.Ctx) error {
 		return api_error.Unauthorized("User not authenticated")
 	}
 
-	uid, err := uuid.Parse(userIDStr)
-	if err != nil {
-		return api_error.BadRequest("Invalid user ID format in session")
-	}
-
 	ip, userAgent := helper.GetClientDetails(c)
 
-	if err := h.passwordSvc.ChangePassword(uid, input, ip, userAgent); err != nil {
+	if err := h.passwordSvc.ChangePassword(userIDStr, input, ip, userAgent); err != nil {
 		if apiErr, ok := err.(*api_error.Error); ok {
 			return apiErr
 		}

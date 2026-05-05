@@ -210,7 +210,7 @@ func (s *oauthService) oauthLogin(input oAuthCallbackInternal, user model.User) 
 
 // generateAndSaveSession creates tokens and session
 func (s *oauthService) generateAndSaveSession(user model.User, provider, ip, userAgent string) (string, string, error) {
-	permissions, err := s.repo.GetUserPermissions(user.ID.String())
+	permissions, err := s.repo.GetUserPermissions(user.ID)
 	if err != nil {
 		log.Printf("failed to get user permissions: %v", err)
 		return "", "", api_error.InternalServerError("Failed to get user permissions").WithErr(err)

@@ -9,7 +9,7 @@ import (
 )
 
 type Repo interface {
-	UserAuthProviders(userId string) []string
+	UserAuthProviders(userId uuid.UUID) []string
 	Create(u model.User, al model.AuthLog, ap *model.AuthProvider) error
 	SaveEmailVerificationToken(token model.EmailVerificationToken) error
 	GetEmailVerificationTokenByHash(tokenHash string) (model.EmailVerificationToken, error)
@@ -18,7 +18,7 @@ type Repo interface {
 	GetPasswordResetTokenByHash(tokenHash string) (model.PasswordResetToken, error)
 	CreateAuthLog(al model.AuthLog) error
 	SavePasswordResetTokenWithLog(prt model.PasswordResetToken, al model.AuthLog) error
-	CompletePasswordReset(userID string, passwordHash string, al model.AuthLog) error
+	CompletePasswordReset(userID uuid.UUID, passwordHash string, al model.AuthLog) error
 	CreateOAuthUser(u model.User, al model.AuthLog, ap model.AuthProvider, state string) error
 	GetOAuthProvider(userID uuid.UUID, provider string) error
 	AddOAuthProviderToUser(userID uuid.UUID, ap model.AuthProvider, al model.AuthLog, state string, provider string) error
@@ -30,7 +30,7 @@ type Repo interface {
 	GetSessionByHash(hash string) (model.Session, error)
 	RevokeSession(id uuid.UUID) error
 	RevokeAllUserSessions(userID uuid.UUID) error
-	GetUserPermissions(userID string) ([]string, error)
+	GetUserPermissions(userID uuid.UUID) ([]string, error)
 }
 
 type repo struct {
@@ -41,7 +41,7 @@ func NewRepo(db *gorm.DB) Repo {
 	return &repo{db: db}
 }
 
-func (r *repo) UserAuthProviders(userId string) []string {
+func (r *repo) UserAuthProviders(userId uuid.UUID) []string {
 	var authProviders []string
 	r.db.Model(&model.AuthProvider{}).Where("user_id = ?", userId).Pluck("provider", &authProviders)
 	return authProviders
@@ -130,7 +130,7 @@ func (r *repo) SavePasswordResetTokenWithLog(prt model.PasswordResetToken, al mo
 }
 
 // CompletePasswordReset completa el reset: actualiza contraseña + invalida token + guarda log CON TRANSACCIÓN Y ROLLBACK
-func (r *repo) CompletePasswordReset(userID string, passwordHash string, al model.AuthLog) error {
+func (r *repo) CompletePasswordReset(userID uuid.UUID, passwordHash string, al model.AuthLog) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		// Actualizar contraseña del usuario
 		if err := tx.Model(&model.User{}).Where("id = ?", userID).Update("password", passwordHash).Error; err != nil {
@@ -292,7 +292,7 @@ func (r *repo) RevokeSession(id uuid.UUID) error {
 func (r *repo) RevokeAllUserSessions(userID uuid.UUID) error {
 	return r.db.Model(&model.Session{}).Where("user_id = ? AND revoked_at IS NULL", userID).Update("revoked_at", time.Now()).Error
 }
-func (r *repo) GetUserPermissions(userID string) ([]string, error) {
+func (r *repo) GetUserPermissions(userID uuid.UUID) ([]string, error) {
 	var permissions []string
 	query := `
 		SELECT role_effective_permissions.permission_id 
@@ -303,7 +303,7 @@ func (r *repo) GetUserPermissions(userID string) ([]string, error) {
 		SELECT permission_id 
 		FROM user_permissions 
 		WHERE user_id = ?
-	`
+		`
 	err := r.db.Raw(query, userID, userID).Scan(&permissions).Error
 	return permissions, err
 }

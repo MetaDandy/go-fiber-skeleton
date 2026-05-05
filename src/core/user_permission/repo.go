@@ -2,13 +2,14 @@ package user_permission
 
 import (
 	"github.com/MetaDandy/go-fiber-skeleton/src/model"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 type Repo interface {
 	BeginTx() *gorm.DB
-	UpdatePermissionsTx(tx *gorm.DB, userID string, add []model.UserPermission, remove []string) error
+	UpdatePermissionsTx(tx *gorm.DB, userID uuid.UUID, add []model.UserPermission, remove []string) error
 }
 
 type repo struct {
@@ -23,7 +24,7 @@ func (r *repo) BeginTx() *gorm.DB {
 	return r.db.Begin()
 }
 
-func (r *repo) UpdatePermissionsTx(tx *gorm.DB, userID string, add []model.UserPermission, remove []string) error {
+func (r *repo) UpdatePermissionsTx(tx *gorm.DB, userID uuid.UUID, add []model.UserPermission, remove []string) error {
 	if len(add) > 0 {
 		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(&add, 50).Error; err != nil {
 			return err

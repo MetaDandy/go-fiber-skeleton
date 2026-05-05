@@ -1,8 +1,12 @@
 package user
 
 import (
+	"context"
+
 	"github.com/MetaDandy/go-fiber-skeleton/helper"
+	"github.com/MetaDandy/go-fiber-skeleton/src/generated"
 	"github.com/MetaDandy/go-fiber-skeleton/src/model"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -32,34 +36,52 @@ func (r *repo) Create(m model.User) error {
 }
 
 func (r *repo) FindByID(id string) (model.User, error) {
-	var user model.User
-	err := r.db.First(&user, "id = ?", id).Error
-	return user, err
+	parsedID, err := uuid.Parse(id)
+	if err != nil {
+		return model.User{}, err
+	}
+	return gorm.G[model.User](r.db).Where(generated.User.ID.Eq(parsedID)).First(context.Background())
 }
 
 func (r *repo) FindByEmail(email string) (model.User, error) {
-	var user model.User
-	err := r.db.First(&user, "email = ?", email).Error
-	return user, err
+	return gorm.G[model.User](r.db).Where(generated.User.Email.Eq(email)).First(context.Background())
 }
 
 func (r *repo) FindAll(opts *helper.FindAllOptions) ([]model.User, int64, error) {
 	var finded []model.User
-	query := r.db.Model(model.User{})
+	query := r.db.Model(&model.User{})
 
 	if opts.Search != "" {
+		searchPattern := "%" + opts.Search + "%"
 		query = query.Where(
-			`name ILIKE ? OR email ILIKE ?`,
-			"%"+opts.Search+"%",
-			"%"+opts.Search+"%",
+			generated.User.Name.ILike(searchPattern),
+			generated.User.Email.ILike(searchPattern),
 		)
 	}
 
 	// Ordering is explicit per repo - User defaults to created_at desc
 	query = query.Order("created_at desc")
 
+	// Count total using a SEPARATE query to avoid breaking the chain
 	var total int64
-	query, total = opts.ApplyFindAllOptions(query)
+	countQuery := r.db.Model(&model.User{})
+	if opts.Search != "" {
+		searchPattern := "%" + opts.Search + "%"
+		countQuery = countQuery.Where(
+			generated.User.Name.ILike(searchPattern),
+			generated.User.Email.ILike(searchPattern),
+		)
+	}
+	if err := countQuery.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Apply Limit/Offset - use defaults if not set
+	limit := int(opts.Limit)
+	if limit == 0 {
+		limit = 10 // Default limit
+	}
+	query = query.Limit(limit).Offset(int(opts.Offset))
 
 	err := query.Find(&finded).Error
 	return finded, total, err
@@ -70,17 +92,31 @@ func (r *repo) Update(m model.User) error {
 }
 
 func (r *repo) Delete(id string) error {
-	return r.db.Delete(&model.User{}, "id = ?", id).Error
+	parsedID, err := uuid.Parse(id)
+	if err != nil {
+		return err
+	}
+	return r.db.Delete(&model.User{}, "id = ?", parsedID).Error
 }
 
 func (r *repo) Exists(id string) error {
-	return r.db.Select("id").First(&model.User{}, "id = ?", id).Error
+	parsedID, err := uuid.Parse(id)
+	if err != nil {
+		return err
+	}
+	_, err = gorm.G[model.User](r.db).Select("id").Where(generated.User.ID.Eq(parsedID)).First(context.Background())
+	return err
 }
 
 func (r *repo) ExistsByEmail(email string) error {
-	return r.db.Select("email").First(&model.User{}, "email = ?", email).Error
+	_, err := gorm.G[model.User](r.db).Select("email").Where(generated.User.Email.Eq(email)).First(context.Background())
+	return err
 }
 
 func (r *repo) UpdatePassword(id string, passwordHash string) error {
-	return r.db.Model(&model.User{}).Where("id = ?", id).Update("password", passwordHash).Error
+	parsedID, err := uuid.Parse(id)
+	if err != nil {
+		return err
+	}
+	return r.db.Model(&model.User{}).Where("id = ?", parsedID).Update("password", passwordHash).Error
 }
