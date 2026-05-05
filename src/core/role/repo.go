@@ -95,8 +95,8 @@ func (r *repo) FindAll(opts *helper.FindAllOptions) ([]model.Role, int64, error)
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
 		query = query.Where(
-			"name ILIKE ? OR description ILIKE ?",
-			searchPattern, searchPattern,
+			generated.Role.Name.ILike(searchPattern),
+			generated.Role.Description.ILike(searchPattern),
 		)
 	}
 
@@ -106,8 +106,8 @@ func (r *repo) FindAll(opts *helper.FindAllOptions) ([]model.Role, int64, error)
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
 		countQuery = countQuery.Where(
-			"name ILIKE ? OR description ILIKE ?",
-			searchPattern, searchPattern,
+			generated.Role.Name.ILike(searchPattern),
+			generated.Role.Description.ILike(searchPattern),
 		)
 	}
 	if err := countQuery.Count(&total).Error; err != nil {

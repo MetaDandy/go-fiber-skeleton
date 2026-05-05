@@ -6,7 +6,7 @@ Una plantilla profesional y modular para iniciar proyectos con **Go Fiber**, dis
 
 ## 📋 Características
 
-✅ **Framework REST**: [Fiber v2](https://gofiber.io) - Framework web ultra rápido inspirado en Express.js
+✅ **Framework REST**: [Fiber v3](https://gofiber.io) - Framework web ultra rápido inspirado en Express.js
 ✅ **Base de datos**: PostgreSQL con [GORM](https://gorm.io) (ORM moderno)
 ✅ **Migraciones**: Pressly [Goose](https://github.com/pressly/goose) para versionado de schema
 ✅ **Autenticación**: JWT (JSON Web Tokens) con middleware validación + context
@@ -24,6 +24,44 @@ Una plantilla profesional y modular para iniciar proyectos con **Go Fiber**, dis
 ✅ **Soft Deletes**: Soporte nativo en modelos (deleted_at field)
 ✅ **Validación**: Struct tags para validación de entrada
 ✅ **Retry Logic**: Reintentos automáticos en conexión BD (10 intentos, 2s delay)
+✅ **GORM CLI**: Field helpers generados en `src/generated/` - ejecutar `make generate` tras cambios en modelos
+
+---
+
+## 🔧� GORM CLI Field Helpers
+
+Este proyecto usa [GORM CLI](https://gorm.io/cli/gorm) para generar field helpers tipados en `src/generated/`. Estos helpers permiten escribir consultas type-safe sin strings SQL crudos.
+
+### Comando de Generación
+
+```bash
+make generate
+# O directamente:
+gorm generate -i ./src/model -o ./src/generated
+```
+
+### Uso en Repos
+
+En lugar de:
+```go
+// ❌ Antiguo (string-based)
+db.Where("name ILIKE ?", searchPattern)
+db.Where("user_id = ?", userID)
+```
+
+Usar:
+```go
+// ✅ Nuevo (field helpers tipados)
+db.Where(generated.User.Name.ILike(searchPattern))
+db.Where(generated.AuthProvider.UserID.Eq(userID))
+```
+
+### Archivos Generados
+
+Los helpers se encuentran en `src/generated/`:
+- `User.go`, `Role.go`, `Permission.go` - Modelos principales
+- `Session.go`, `Auth_Provider.go`, etc. - Modelos de autenticación
+- **NO editar manualmente** - se regeneran con `make generate`
 
 ---
 

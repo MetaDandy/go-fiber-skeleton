@@ -1,8 +1,10 @@
 package authentication
 
 import (
+	"context"
 	"time"
 
+	"github.com/MetaDandy/go-fiber-skeleton/src/generated"
 	"github.com/MetaDandy/go-fiber-skeleton/src/model"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -42,9 +44,16 @@ func NewRepo(db *gorm.DB) Repo {
 }
 
 func (r *repo) UserAuthProviders(userId uuid.UUID) []string {
-	var authProviders []string
-	r.db.Model(&model.AuthProvider{}).Where("user_id = ?", userId).Pluck("provider", &authProviders)
-	return authProviders
+	var authProviders []model.AuthProvider
+	result := r.db.Where(generated.AuthProvider.UserID.Eq(userId)).Find(&authProviders)
+	if result.Error != nil {
+		return []string{}
+	}
+	providers := make([]string, 0, len(authProviders))
+	for _, ap := range authProviders {
+		providers = append(providers, ap.Provider)
+	}
+	return providers
 }
 
 func (r *repo) Create(u model.User, al model.AuthLog, ap *model.AuthProvider) error {
@@ -77,9 +86,10 @@ func (r *repo) SaveEmailVerificationToken(token model.EmailVerificationToken) er
 }
 
 func (r *repo) GetEmailVerificationTokenByHash(tokenHash string) (model.EmailVerificationToken, error) {
-	var token model.EmailVerificationToken
-	err := r.db.Where("token_hash = ? AND used_at IS NULL", tokenHash).First(&token).Error
-	return token, err
+	return gorm.G[model.EmailVerificationToken](r.db).
+		Where(generated.EmailVerificationToken.TokenHash.Eq(tokenHash)).
+		Where("used_at IS NULL").
+		First(context.Background())
 }
 
 func (r *repo) MarkEmailAsVerified(userID uuid.UUID) error {
@@ -96,9 +106,10 @@ func (r *repo) InvalidateOldEmailTokens(userID uuid.UUID) error {
 }
 
 func (r *repo) GetPasswordResetTokenByHash(tokenHash string) (model.PasswordResetToken, error) {
-	var token model.PasswordResetToken
-	err := r.db.Where("token_hash = ? AND used_at IS NULL", tokenHash).First(&token).Error
-	return token, err
+	return gorm.G[model.PasswordResetToken](r.db).
+		Where(generated.PasswordResetToken.TokenHash.Eq(tokenHash)).
+		Where("used_at IS NULL").
+		First(context.Background())
 }
 
 func (r *repo) CreateAuthLog(al model.AuthLog) error {
@@ -263,12 +274,11 @@ func (r *repo) ConsumeOAuthStateAndLog(state, provider string, al model.AuthLog)
 
 // GetOAuthProviderByState retorna el provider asociado a un state válido
 func (r *repo) GetOAuthProviderByState(state string) (string, error) {
-	var oauthState model.OAuthState
-
-	// Buscar el estado y validar que no esté expirado
-	if err := r.db.Where("state = ? AND expires_at > ? AND deleted_at IS NULL",
-		state, time.Now()).
-		First(&oauthState).Error; err != nil {
+	oauthState, err := gorm.G[model.OAuthState](r.db).
+		Where(generated.OAuthState.State.Eq(state)).
+		Where("expires_at > ? AND deleted_at IS NULL", time.Now()).
+		First(context.Background())
+	if err != nil {
 		return "", err
 	}
 
@@ -280,17 +290,25 @@ func (r *repo) CreateSession(session model.Session) error {
 }
 
 func (r *repo) GetSessionByHash(hash string) (model.Session, error) {
-	var session model.Session
-	err := r.db.Where("refresh_token_hash = ? AND revoked_at IS NULL", hash).First(&session).Error
-	return session, err
+	return gorm.G[model.Session](r.db).
+		Where(generated.Session.RefreshTokenHash.Eq(hash)).
+		Where("revoked_at IS NULL").
+		First(context.Background())
 }
 
 func (r *repo) RevokeSession(id uuid.UUID) error {
-	return r.db.Model(&model.Session{}).Where("id = ?", id).Update("revoked_at", time.Now()).Error
+	_, err := gorm.G[model.Session](r.db).
+		Where(generated.Session.ID.Eq(id)).
+		Update(context.Background(), "revoked_at", time.Now())
+	return err
 }
 
 func (r *repo) RevokeAllUserSessions(userID uuid.UUID) error {
-	return r.db.Model(&model.Session{}).Where("user_id = ? AND revoked_at IS NULL", userID).Update("revoked_at", time.Now()).Error
+	_, err := gorm.G[model.Session](r.db).
+		Where(generated.Session.UserID.Eq(userID)).
+		Where("revoked_at IS NULL").
+		Update(context.Background(), "revoked_at", time.Now())
+	return err
 }
 func (r *repo) GetUserPermissions(userID uuid.UUID) ([]string, error) {
 	var permissions []string
