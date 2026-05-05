@@ -30,15 +30,16 @@ func (r *repo) FindByID(id string) (model.Permission, error) {
 
 func (r *repo) FindAll(opts *helper.FindAllOptions) ([]model.Permission, int64, error) {
 	var finded []model.Permission
-	
+
 	// Build the base query with conditions
 	query := r.db.Model(&model.Permission{})
 
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
+		// Use OR logic for search - match name OR description
 		query = query.Where(
-			generated.Permission.Name.ILike(searchPattern),
-			generated.Permission.Description.ILike(searchPattern),
+			r.db.Where(generated.Permission.Name.ILike(searchPattern)).
+				Or(generated.Permission.Description.ILike(searchPattern)),
 		)
 	}
 
@@ -47,9 +48,10 @@ func (r *repo) FindAll(opts *helper.FindAllOptions) ([]model.Permission, int64, 
 	countQuery := r.db.Model(&model.Permission{})
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
+		// Use OR logic for search - match name OR description
 		countQuery = countQuery.Where(
-			generated.Permission.Name.ILike(searchPattern),
-			generated.Permission.Description.ILike(searchPattern),
+			countQuery.Where(generated.Permission.Name.ILike(searchPattern)).
+				Or(generated.Permission.Description.ILike(searchPattern)),
 		)
 	}
 	if err := countQuery.Count(&total).Error; err != nil {

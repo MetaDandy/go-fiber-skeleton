@@ -295,13 +295,13 @@ func (r *repo) RevokeAllUserSessions(userID uuid.UUID) error {
 func (r *repo) GetUserPermissions(userID uuid.UUID) ([]string, error) {
 	var permissions []string
 	query := `
-		SELECT role_effective_permissions.permission_id 
-		FROM role_effective_permissions
-		INNER JOIN users ON users.role_id = role_effective_permissions.role_id
+		SELECT roleeffectivepermissions.permission_id 
+		FROM roleeffectivepermissions
+		INNER JOIN users ON users.role_id = roleeffectivepermissions.role_id
 		WHERE users.id = ?
 		UNION
 		SELECT permission_id 
-		FROM user_permissions 
+		FROM userpermissions 
 		WHERE user_id = ?
 		`
 	err := r.db.Raw(query, userID, userID).Scan(&permissions).Error

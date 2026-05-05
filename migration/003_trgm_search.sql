@@ -1,4 +1,5 @@
 -- +goose Up
+-- +goose NO TRANSACTION
 -- Enable pg_trgm extension for trigram-based text search
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
@@ -15,6 +16,7 @@ CREATE INDEX CONCURRENTLY idx_permissions_name_trgm ON permissions USING gin (na
 CREATE INDEX CONCURRENTLY idx_permissions_description_trgm ON permissions USING gin (description gin_trgm_ops);
 
 -- +goose Down
+-- +goose NO TRANSACTION
 DROP INDEX CONCURRENTLY IF EXISTS idx_permissions_description_trgm;
 DROP INDEX CONCURRENTLY IF EXISTS idx_permissions_name_trgm;
 DROP INDEX CONCURRENTLY IF EXISTS idx_roles_description_trgm;

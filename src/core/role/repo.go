@@ -95,8 +95,8 @@ func (r *repo) FindAll(opts *helper.FindAllOptions) ([]model.Role, int64, error)
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
 		query = query.Where(
-			generated.Role.Name.ILike(searchPattern),
-			generated.Role.Description.ILike(searchPattern),
+			"name ILIKE ? OR description ILIKE ?",
+			searchPattern, searchPattern,
 		)
 	}
 
@@ -106,8 +106,8 @@ func (r *repo) FindAll(opts *helper.FindAllOptions) ([]model.Role, int64, error)
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
 		countQuery = countQuery.Where(
-			generated.Role.Name.ILike(searchPattern),
-			generated.Role.Description.ILike(searchPattern),
+			"name ILIKE ? OR description ILIKE ?",
+			searchPattern, searchPattern,
 		)
 	}
 	if err := countQuery.Count(&total).Error; err != nil {
@@ -349,5 +349,7 @@ func (r *repo) DeleteOwnEffectivePermissionsTx(tx *gorm.DB, roleIDs []uuid.UUID,
 	if len(roleIDs) == 0 {
 		return nil
 	}
-	return tx.Exec("DELETE FROM roleeffectivepermissions WHERE role_id IN ? AND permission_id = ? AND source_role_id = role_id", roleIDs, permissionID).Error
+	return tx.Where("role_id IN ? AND permission_id = ?", roleIDs, permissionID).
+		Where("source_role_id = role_id").
+		Delete(&model.RoleEffectivePermission{}).Error
 }
