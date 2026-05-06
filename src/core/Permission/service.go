@@ -1,14 +1,15 @@
 package permission
 
 import (
+	"github.com/MetaDandy/go-fiber-skeleton/api_error"
 	"github.com/MetaDandy/go-fiber-skeleton/helper"
 	"github.com/MetaDandy/go-fiber-skeleton/src/response"
 )
 
 type Service interface {
-	FindByID(id string) (*response.Permission, error)
-	FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.Permission], error)
-	AllExists(ids []string) error
+	FindByID(id string) (*response.Permission, *api_error.Error)
+	FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.Permission], *api_error.Error)
+	AllExists(ids []string) *api_error.Error
 }
 
 type service struct {
@@ -19,20 +20,20 @@ func NewService(repo Repo) Service {
 	return &service{repo: repo}
 }
 
-func (s *service) FindByID(id string) (*response.Permission, error) {
+func (s *service) FindByID(id string) (*response.Permission, *api_error.Error) {
 	permission, err := s.repo.FindByID(id)
 	if err != nil {
-		return nil, err
+		return nil, api_error.NotFound("Permission not found").WithErr(err)
 	}
 	dto := response.PermissionToDto(&permission)
 
 	return &dto, nil
 }
 
-func (s *service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.Permission], error) {
+func (s *service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.Permission], *api_error.Error) {
 	finded, total, err := s.repo.FindAll(opts)
 	if err != nil {
-		return nil, err
+		return nil, api_error.InternalServerError("Could not retrieve permissions").WithErr(err)
 	}
 	dtos := response.PermissionToListDto(finded)
 	pages := uint((total + int64(opts.Limit) - 1) / int64(opts.Limit))
@@ -46,6 +47,9 @@ func (s *service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[resp
 	}, nil
 }
 
-func (s *service) AllExists(ids []string) error {
-	return s.repo.AllExists(ids)
+func (s *service) AllExists(ids []string) *api_error.Error {
+	if err := s.repo.AllExists(ids); err != nil {
+		return api_error.InternalServerError("Could not verify permissions").WithErr(err)
+	}
+	return nil
 }

@@ -25,8 +25,8 @@ type oauthURepo interface {
 
 // OAuthService interface
 type OAuthService interface {
-	OAuthLogin(provider string) (string, error)
-	OAuthCallback(code, state, ip, userAgent string) (string, string, error)
+	OAuthLogin(provider string) (string, *api_error.Error)
+	OAuthCallback(code, state, ip, userAgent string) (string, string, *api_error.Error)
 }
 
 type oauthService struct {
@@ -44,7 +44,7 @@ func NewOAuthService(repo Repo, uRepo oauthURepo, redirectURL string) OAuthServi
 }
 
 // OAuthLogin implements the OAuth login flow
-func (s *oauthService) OAuthLogin(provider string) (string, error) {
+func (s *oauthService) OAuthLogin(provider string) (string, *api_error.Error) {
 	if !enum.IsValidAuthProvider(provider) {
 		return "", api_error.BadRequest("Unsupported oauth provider")
 	}
@@ -67,7 +67,7 @@ func (s *oauthService) OAuthLogin(provider string) (string, error) {
 }
 
 // OAuthCallback handles the OAuth callback
-func (s *oauthService) OAuthCallback(code, state, ip, userAgent string) (string, string, error) {
+func (s *oauthService) OAuthCallback(code, state, ip, userAgent string) (string, string, *api_error.Error) {
 	// Validate state and get provider
 	provider, err := s.repo.GetOAuthProviderByState(state)
 	if err != nil {
@@ -112,7 +112,7 @@ type oAuthCallbackInternal struct {
 }
 
 // oauthCreateOrLogin handles the OAuth flow: creates user if not exists or logs in if exists
-func (s *oauthService) oauthCreateOrLogin(input oAuthCallbackInternal) (string, string, error) {
+func (s *oauthService) oauthCreateOrLogin(input oAuthCallbackInternal) (string, string, *api_error.Error) {
 	if input.UserInfo.Email == "" {
 		return "", "", api_error.BadRequest("No email provided by OAuth provider")
 	}
@@ -133,7 +133,7 @@ func (s *oauthService) oauthCreateOrLogin(input oAuthCallbackInternal) (string, 
 }
 
 // oauthSignUp creates a new user with OAuth
-func (s *oauthService) oauthSignUp(input oAuthCallbackInternal) (string, string, error) {
+func (s *oauthService) oauthSignUp(input oAuthCallbackInternal) (string, string, *api_error.Error) {
 	user := model.User{
 		ID:              uuid.New(),
 		Email:           input.UserInfo.Email,
@@ -166,7 +166,7 @@ func (s *oauthService) oauthSignUp(input oAuthCallbackInternal) (string, string,
 }
 
 // oauthLogin handles login of an existing user with OAuth
-func (s *oauthService) oauthLogin(input oAuthCallbackInternal, user model.User) (string, string, error) {
+func (s *oauthService) oauthLogin(input oAuthCallbackInternal, user model.User) (string, string, *api_error.Error) {
 	// Verificar si el usuario ya tiene este proveedor
 	err := s.repo.GetOAuthProvider(user.ID, input.Provider)
 	if err != nil && err != gorm.ErrRecordNotFound {
@@ -209,7 +209,7 @@ func (s *oauthService) oauthLogin(input oAuthCallbackInternal, user model.User) 
 }
 
 // generateAndSaveSession creates tokens and session
-func (s *oauthService) generateAndSaveSession(user model.User, provider, ip, userAgent string) (string, string, error) {
+func (s *oauthService) generateAndSaveSession(user model.User, provider, ip, userAgent string) (string, string, *api_error.Error) {
 	permissions, err := s.repo.GetUserPermissions(user.ID)
 	if err != nil {
 		log.Printf("failed to get user permissions: %v", err)

@@ -7,11 +7,11 @@ import (
 )
 
 type PermissionChecker interface {
-	AllExists(ids []string) error
+	AllExists(ids []string) *api_error.Error
 }
 
 type Service interface {
-	UpdateDetails(userID string, input UpdateDetails) error
+	UpdateDetails(userID string, input UpdateDetails) *api_error.Error
 }
 
 type service struct {
@@ -54,7 +54,7 @@ func removeDuplicatesBetweenArrays(add, remove []string) ([]string, []string) {
 	return filteredAdd, filteredRemove
 }
 
-func (s *service) UpdateDetails(userID string, input UpdateDetails) error {
+func (s *service) UpdateDetails(userID string, input UpdateDetails) *api_error.Error {
 	if len(input.Add) == 0 && len(input.Remove) == 0 {
 		return api_error.BadRequest("At least one of add or remove must contain one element")
 	}
@@ -66,7 +66,7 @@ func (s *service) UpdateDetails(userID string, input UpdateDetails) error {
 
 	if len(input.Add) > 0 {
 		if err := s.permissionChecker.AllExists(input.Add); err != nil {
-			return err
+			return api_error.InternalServerError("Internal error").WithErr(err)
 		}
 	}
 
@@ -74,7 +74,7 @@ func (s *service) UpdateDetails(userID string, input UpdateDetails) error {
 
 	tx := s.repo.BeginTx()
 	if tx.Error != nil {
-		return tx.Error
+		return api_error.InternalServerError("Database error").WithErr(tx.Error)
 	}
 
 	defer func() {
@@ -95,8 +95,8 @@ func (s *service) UpdateDetails(userID string, input UpdateDetails) error {
 
 	if err := s.repo.UpdatePermissionsTx(tx, parsedUserID, userPermissionsToAdd, remove); err != nil {
 		tx.Rollback()
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
-	return tx.Commit().Error
+	return api_error.InternalServerError("Failed to commit").WithErr(tx.Commit().Error)
 }

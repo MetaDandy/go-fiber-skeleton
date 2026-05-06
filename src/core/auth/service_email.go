@@ -18,8 +18,8 @@ type emailURepo interface {
 
 // EmailService interface
 type EmailService interface {
-	VerifyEmail(token string) error
-	ResendVerificationEmail(email string) error
+	VerifyEmail(token string) *api_error.Error
+	ResendVerificationEmail(email string) *api_error.Error
 }
 
 type emailService struct {
@@ -37,7 +37,7 @@ func NewEmailService(repo Repo, uRepo emailURepo, mailService mail.EmailService)
 }
 
 // VerifyEmail verifica el email del usuario usando el token recibido
-func (s *emailService) VerifyEmail(token string) error {
+func (s *emailService) VerifyEmail(token string) *api_error.Error {
 	if token == "" {
 		return api_error.BadRequest("token is required")
 	}
@@ -48,7 +48,7 @@ func (s *emailService) VerifyEmail(token string) error {
 	// Buscar en BD verificando que no esté usado y no esté expirado
 	evt, err := s.repo.GetEmailVerificationTokenByHash(tokenHash)
 	if err != nil {
-		return api_error.Unauthorized("Invalid or expired token")
+		return api_error.Unauthorized("Invalid or expired token").WithErr(err)
 	}
 
 	// Validar expiración (24 horas)
@@ -58,8 +58,7 @@ func (s *emailService) VerifyEmail(token string) error {
 
 	// Marcar usuario como verificado
 	if err := s.repo.MarkEmailAsVerified(evt.UserID); err != nil {
-		log.Printf("failed to mark email as verified: %v", err)
-		return api_error.InternalServerError("Could not verify email")
+		return api_error.InternalServerError("Could not verify email").WithErr(err)
 	}
 
 	// Marcar token como usado
@@ -71,7 +70,7 @@ func (s *emailService) VerifyEmail(token string) error {
 }
 
 // ResendVerificationEmail reenvía un email de verificación
-func (s *emailService) ResendVerificationEmail(email string) error {
+func (s *emailService) ResendVerificationEmail(email string) *api_error.Error {
 	if email == "" {
 		return api_error.BadRequest("email is required")
 	}
@@ -79,7 +78,7 @@ func (s *emailService) ResendVerificationEmail(email string) error {
 	// Buscar el usuario
 	user, err := s.uRepo.FindByEmail(email)
 	if err != nil {
-		return api_error.Unauthorized("User not found")
+		return api_error.NotFound("User not found").WithErr(err)
 	}
 
 	// Validar que el email no esté ya verificado
@@ -95,8 +94,7 @@ func (s *emailService) ResendVerificationEmail(email string) error {
 	// Generar nuevo token
 	token, err := mail.GenerateVerificationToken()
 	if err != nil {
-		log.Printf("failed to generate verification token: %v", err)
-		return api_error.InternalServerError("Could not generate token")
+		return api_error.InternalServerError("Could not generate token").WithErr(err)
 	}
 
 	// Guardar el token
@@ -108,15 +106,13 @@ func (s *emailService) ResendVerificationEmail(email string) error {
 	}
 
 	if err := s.repo.SaveEmailVerificationToken(evt); err != nil {
-		log.Printf("failed to save verification token: %v", err)
-		return api_error.InternalServerError("Could not save token")
+		return api_error.InternalServerError("Could not save token").WithErr(err)
 	}
 
 	// Enviar email
 	ctx := context.Background()
 	if err := s.mailService.SendVerificationEmail(ctx, user.Email, user.Name, token); err != nil {
-		log.Printf("failed to send verification email: %v", err)
-		return api_error.InternalServerError("Could not send email")
+		return api_error.InternalServerError("Could not send email").WithErr(err)
 	}
 
 	return nil

@@ -17,8 +17,8 @@ type sessionURepo interface {
 
 // SessionService interface
 type SessionService interface {
-	RefreshToken(refreshToken string, ip string, userAgent string) (string, string, error)
-	Logout(refreshToken string) error
+	RefreshToken(refreshToken string, ip string, userAgent string) (string, string, *api_error.Error)
+	Logout(refreshToken string) *api_error.Error
 }
 
 type sessionService struct {
@@ -34,7 +34,7 @@ func NewSessionService(repo Repo, uRepo sessionURepo) SessionService {
 }
 
 // RefreshToken valida un refresh token y emite un nuevo par (Token Rotation)
-func (s *sessionService) RefreshToken(refreshToken string, ip string, userAgent string) (string, string, error) {
+func (s *sessionService) RefreshToken(refreshToken string, ip string, userAgent string) (string, string, *api_error.Error) {
 	// 1. Hashear el token recibido
 	tokenHash := mail.HashToken(refreshToken)
 
@@ -98,7 +98,7 @@ func (s *sessionService) RefreshToken(refreshToken string, ip string, userAgent 
 }
 
 // Logout invalida la sesión de forma inmediata
-func (s *sessionService) Logout(refreshToken string) error {
+func (s *sessionService) Logout(refreshToken string) *api_error.Error {
 	if refreshToken == "" {
 		return nil
 	}
@@ -109,5 +109,8 @@ func (s *sessionService) Logout(refreshToken string) error {
 		return nil // Ya no existe o ya está revocada
 	}
 
-	return s.repo.RevokeSession(session.ID)
+	if err := s.repo.RevokeSession(session.ID); err != nil {
+		return api_error.InternalServerError("Failed to revoke session").WithErr(err)
+	}
+	return nil
 }

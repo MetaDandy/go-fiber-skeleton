@@ -80,10 +80,7 @@ func (h *handler) UserAuthProviders(c fiber.Ctx) error {
 
 	providers, err := h.passwordSvc.UserAuthProviders(email)
 	if err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError("Could not retrieve authentication providers").WithErr(err)
+		return err
 	}
 
 	return c.JSON(fiber.Map{
@@ -102,10 +99,7 @@ func (h *handler) SignUpPassword(c fiber.Ctx) error {
 	}
 
 	if err := h.passwordSvc.SignUpPassword(input); err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError(err.Error()).WithErr(err)
+		return err
 	}
 
 	return c.JSON(fiber.Map{
@@ -127,10 +121,7 @@ func (h *handler) LoginPassword(c fiber.Ctx) error {
 
 	token, refreshToken, err := h.passwordSvc.LoginPassword(input)
 	if err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError("LoginPassword failed").WithErr(err)
+		return err
 	}
 
 	cookie.SetAuthTokenCookie(c, token)
@@ -151,10 +142,7 @@ func (h *handler) RefreshToken(c fiber.Ctx) error {
 
 	newToken, newRefreshToken, err := h.sessionSvc.RefreshToken(refreshToken, ip, userAgent)
 	if err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.Unauthorized("Could not refresh token").WithErr(err)
+		return err
 	}
 
 	cookie.SetAuthTokenCookie(c, newToken)
@@ -186,10 +174,7 @@ func (h *handler) VerifyEmail(c fiber.Ctx) error {
 	}
 
 	if err := h.emailSvc.VerifyEmail(token); err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError("Failed to verify email").WithErr(err)
+		return err
 	}
 
 	return c.JSON(fiber.Map{
@@ -205,10 +190,7 @@ func (h *handler) ResendVerificationEmail(c fiber.Ctx) error {
 	}
 
 	if err := h.emailSvc.ResendVerificationEmail(email); err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError("Failed to resend verification email").WithErr(err)
+		return err
 	}
 
 	return c.JSON(fiber.Map{
@@ -229,10 +211,7 @@ func (h *handler) ForgotPassword(c fiber.Ctx) error {
 	}
 
 	if err := h.passwordSvc.ForgotPassword(input); err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError("Could not process forgot password request").WithErr(err)
+		return err
 	}
 
 	return c.JSON(fiber.Map{
@@ -253,10 +232,7 @@ func (h *handler) ResetPassword(c fiber.Ctx) error {
 	}
 
 	if err := h.passwordSvc.ResetPassword(input); err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError("Could not reset password").WithErr(err)
+		return err
 	}
 
 	return c.JSON(fiber.Map{
@@ -282,10 +258,7 @@ func (h *handler) ChangePassword(c fiber.Ctx) error {
 	ip, userAgent := helper.GetClientDetails(c)
 
 	if err := h.passwordSvc.ChangePassword(userIDStr, input, ip, userAgent); err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError("Could not change password").WithErr(err)
+		return err
 	}
 
 	return c.JSON(fiber.Map{
@@ -300,10 +273,7 @@ func (h *handler) OAuthLogin(c fiber.Ctx) error {
 	// Call OAuth service to get the authorization URL
 	authURL, err := h.oauthSvc.OAuthLogin(provider)
 	if err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError("Could not initiate OAuth login").WithErr(err)
+		return err
 	}
 
 	return c.Redirect().To(authURL)
@@ -323,10 +293,7 @@ func (h *handler) OAuthCallback(c fiber.Ctx) error {
 	// Call OAuth service to handle the callback
 	jwtToken, refreshToken, err := h.oauthSvc.OAuthCallback(code, state, ip, userAgent)
 	if err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError("Authentication failed").WithErr(err)
+		return err
 	}
 
 	// Set cookies with the tokens

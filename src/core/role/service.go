@@ -11,15 +11,15 @@ import (
 )
 
 type Service interface {
-	Create(input Create) error
-	FindByID(id string) (*response.Role, error)
-	FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.Role], error)
-	UpdateHeader(id string, input UpdateHeader) error
-	UpdateDetails(id string, input UpdateDetails) error
+	Create(input Create) *api_error.Error
+	FindByID(id string) (*response.Role, *api_error.Error)
+	FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.Role], *api_error.Error)
+	UpdateHeader(id string, input UpdateHeader) *api_error.Error
+	UpdateDetails(id string, input UpdateDetails) *api_error.Error
 }
 
 type PermissionChecker interface {
-	AllExists(ids []string) error
+	AllExists(ids []string) *api_error.Error
 }
 
 type service struct {
@@ -34,13 +34,13 @@ func NewService(repo Repo, permissionChecker PermissionChecker) Service {
 	}
 }
 
-func (s *service) Create(input Create) error {
+func (s *service) Create(input Create) *api_error.Error {
 	if len(input.Permissions) == 0 {
 		return api_error.BadRequest("Role must have at least one direct permission")
 	}
 
 	if err := s.permissionChecker.AllExists(input.Permissions); err != nil {
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
 	roleID := uuid.New()
@@ -51,12 +51,12 @@ func (s *service) Create(input Create) error {
 	if input.RoleID != nil && *input.RoleID != "" {
 		parsedRoleID, err := uuid.Parse(*input.RoleID)
 		if err != nil {
-			return err
+			return api_error.InternalServerError("Internal error").WithErr(err)
 		}
 
 		parentRole, err := s.repo.FindByID(parsedRoleID)
 		if err != nil {
-			return err
+			return api_error.InternalServerError("Internal error").WithErr(err)
 		}
 
 		parentID = &parentRole.ID
@@ -112,10 +112,13 @@ func (s *service) Create(input Create) error {
 		})
 	}
 
-	return s.repo.Create(role, rolePermissions, roleEffectivePermissions)
+	if err := s.repo.Create(role, rolePermissions, roleEffectivePermissions); err != nil {
+		return api_error.InternalServerError("Repository error").WithErr(err)
+	}
+	return nil
 }
 
-func (s *service) FindByID(id string) (*response.Role, error) {
+func (s *service) FindByID(id string) (*response.Role, *api_error.Error) {
 	parsedID, err := uuid.Parse(id)
 	if err != nil {
 		return nil, api_error.BadRequest("Invalid role ID: " + id)
@@ -123,17 +126,17 @@ func (s *service) FindByID(id string) (*response.Role, error) {
 
 	role, err := s.repo.FindByID(parsedID)
 	if err != nil {
-		return nil, err
+		return nil, api_error.InternalServerError("Database error").WithErr(err)
 	}
 
 	dto := response.RoleToDto(&role)
 	return &dto, nil
 }
 
-func (s *service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.Role], error) {
+func (s *service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.Role], *api_error.Error) {
 	finded, total, err := s.repo.FindAll(opts)
 	if err != nil {
-		return nil, err
+		return nil, api_error.InternalServerError("Database error").WithErr(err)
 	}
 
 	dtos := response.RoleToListDto(finded)
@@ -176,7 +179,7 @@ func removeDuplicatesBetweenStringArrays(add, remove []string) ([]string, []stri
 	return filteredAdd, filteredRemove
 }
 
-func (s *service) UpdateHeader(id string, input UpdateHeader) error {
+func (s *service) UpdateHeader(id string, input UpdateHeader) *api_error.Error {
 	parsedID, err := uuid.Parse(id)
 	if err != nil {
 		return api_error.BadRequest("Invalid role ID: " + id)
@@ -184,7 +187,7 @@ func (s *service) UpdateHeader(id string, input UpdateHeader) error {
 
 	tx := s.repo.BeginTx()
 	if tx.Error != nil {
-		return tx.Error
+		return api_error.InternalServerError("Database error").WithErr(tx.Error)
 	}
 
 	defer func() {
@@ -197,7 +200,7 @@ func (s *service) UpdateHeader(id string, input UpdateHeader) error {
 	role, err := s.repo.FindByIDTx(tx, parsedID)
 	if err != nil {
 		tx.Rollback()
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
 	opt := copier.Option{
@@ -207,7 +210,7 @@ func (s *service) UpdateHeader(id string, input UpdateHeader) error {
 
 	if err := copier.CopyWithOption(&role, &input, opt); err != nil {
 		tx.Rollback()
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
 	if input.RoleID != nil {
@@ -215,7 +218,7 @@ func (s *service) UpdateHeader(id string, input UpdateHeader) error {
 			parsedRoleID, err := uuid.Parse(*input.RoleID)
 			if err != nil {
 				tx.Rollback()
-				return err
+				return api_error.InternalServerError("Internal error").WithErr(err)
 			}
 			role.RoleID = &parsedRoleID
 		} else {
@@ -225,23 +228,23 @@ func (s *service) UpdateHeader(id string, input UpdateHeader) error {
 
 	if err := tx.Save(&role).Error; err != nil {
 		tx.Rollback()
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
 	if err := s.normalizeDirectPermissionsAgainstParentTx(tx, role.ID, input.StrictMode); err != nil {
 		tx.Rollback()
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
 	if err := s.rebuildRoleTreeTx(tx, role.ID); err != nil {
 		tx.Rollback()
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
-	return tx.Commit().Error
+	return api_error.InternalServerError("Failed to commit").WithErr(tx.Commit().Error)
 }
 
-func (s *service) UpdateDetails(id string, input UpdateDetails) error {
+func (s *service) UpdateDetails(id string, input UpdateDetails) *api_error.Error {
 	add := input.Add
 	remove := input.Remove
 
@@ -251,7 +254,7 @@ func (s *service) UpdateDetails(id string, input UpdateDetails) error {
 
 	if len(add) > 0 {
 		if err := s.permissionChecker.AllExists(add); err != nil {
-			return err
+			return api_error.InternalServerError("Internal error").WithErr(err)
 		}
 	}
 
@@ -262,7 +265,7 @@ func (s *service) UpdateDetails(id string, input UpdateDetails) error {
 
 	tx := s.repo.BeginTx()
 	if tx.Error != nil {
-		return tx.Error
+		return api_error.InternalServerError("Database error").WithErr(tx.Error)
 	}
 
 	defer func() {
@@ -275,7 +278,7 @@ func (s *service) UpdateDetails(id string, input UpdateDetails) error {
 	role, err := s.repo.FindByIDTx(tx, parsedID)
 	if err != nil {
 		tx.Rollback()
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
 	// Remove duplicates between add and remove
@@ -302,7 +305,7 @@ func (s *service) UpdateDetails(id string, input UpdateDetails) error {
 		parentRole, err := s.repo.FindByIDTx(tx, *role.RoleID)
 		if err != nil {
 			tx.Rollback()
-			return err
+			return api_error.InternalServerError("Internal error").WithErr(err)
 		}
 
 		parentEffectiveMap := make(map[string]struct{}, len(parentRole.Role_effective_permissions))
@@ -336,7 +339,7 @@ func (s *service) UpdateDetails(id string, input UpdateDetails) error {
 	remainingDirectCount, err := s.repo.CountDirectPermissionsNotInSetTx(tx, role.ID, remove)
 	if err != nil {
 		tx.Rollback()
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
 	finalDirectCount := remainingDirectCount + int64(len(add))
@@ -351,7 +354,7 @@ func (s *service) UpdateDetails(id string, input UpdateDetails) error {
 			descendants, err := s.repo.DescendantsWithDirectPermissionTx(tx, parsedID, permissionID)
 			if err != nil {
 				tx.Rollback()
-				return err
+				return api_error.InternalServerError("Internal error").WithErr(err)
 			}
 			if len(descendants) > 0 {
 				tx.Rollback()
@@ -374,14 +377,14 @@ func (s *service) UpdateDetails(id string, input UpdateDetails) error {
 
 	if err := s.repo.UpdateRolePermissionsTx(tx, parsedID, rolePermissionsToAdd, remove); err != nil {
 		tx.Rollback()
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
 	// Propagación incremental add
 	for _, permissionID := range add {
 		if err := s.propagateAddTx(tx, role.ID, permissionID, input.StrictMode); err != nil {
 			tx.Rollback()
-			return err
+			return api_error.InternalServerError("Internal error").WithErr(err)
 		}
 	}
 
@@ -389,17 +392,17 @@ func (s *service) UpdateDetails(id string, input UpdateDetails) error {
 	for _, permissionID := range remove {
 		if err := s.propagateRemoveTx(tx, role.ID, permissionID); err != nil {
 			tx.Rollback()
-			return err
+			return api_error.InternalServerError("Internal error").WithErr(err)
 		}
 	}
 
-	return tx.Commit().Error
+	return api_error.InternalServerError("Failed to commit").WithErr(tx.Commit().Error)
 }
 
-func (s *service) propagateAddTx(tx *gorm.DB, roleID uuid.UUID, permissionID string, strictMode bool) error {
+func (s *service) propagateAddTx(tx *gorm.DB, roleID uuid.UUID, permissionID string, strictMode bool) *api_error.Error {
 	descendants, err := s.repo.FindDescendantsOrderedTx(tx, roleID)
 	if err != nil {
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
 	bulkUpserts := make([]model.RoleEffectivePermission, 0, len(descendants)+1)
@@ -429,13 +432,13 @@ func (s *service) propagateAddTx(tx *gorm.DB, roleID uuid.UUID, permissionID str
 
 		rolesWithDirect, err := s.repo.GetRolesWithDirectPermissionTx(tx, descendantIDs, permissionID)
 		if err != nil {
-			return err
+			return api_error.InternalServerError("Internal error").WithErr(err)
 		}
 
 		if len(rolesWithDirect) > 0 {
 			counts, err := s.repo.GetDirectPermissionsCountsTx(tx, rolesWithDirect)
 			if err != nil {
-				return err
+				return api_error.InternalServerError("Internal error").WithErr(err)
 			}
 
 			for _, id := range rolesWithDirect {
@@ -447,21 +450,24 @@ func (s *service) propagateAddTx(tx *gorm.DB, roleID uuid.UUID, permissionID str
 			}
 
 			if err := s.repo.DeleteDirectPermissionsBatchTx(tx, rolesWithDirect, permissionID); err != nil {
-				return err
+				return api_error.InternalServerError("Internal error").WithErr(err)
 			}
 			if err := s.repo.DeleteOwnEffectivePermissionsTx(tx, rolesWithDirect, permissionID); err != nil {
-				return err
+				return api_error.InternalServerError("Internal error").WithErr(err)
 			}
 		}
 	}
 
-	return s.repo.UpsertEffectivePermissionsBatchTx(tx, bulkUpserts)
+	if err := s.repo.UpsertEffectivePermissionsBatchTx(tx, bulkUpserts); err != nil {
+		return api_error.InternalServerError("Repository error").WithErr(err)
+	}
+	return nil
 }
 
-func (s *service) propagateRemoveTx(tx *gorm.DB, roleID uuid.UUID, permissionID string) error {
+func (s *service) propagateRemoveTx(tx *gorm.DB, roleID uuid.UUID, permissionID string) *api_error.Error {
 	descendants, err := s.repo.FindDescendantsOrderedTx(tx, roleID)
 	if err != nil {
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
 	roleIDs := make([]uuid.UUID, 0, len(descendants)+1)
@@ -471,14 +477,17 @@ func (s *service) propagateRemoveTx(tx *gorm.DB, roleID uuid.UUID, permissionID 
 		roleIDs = append(roleIDs, d.ID)
 	}
 
-	return s.repo.DeleteEffectivePermissionsBySourceAndRolesTx(tx, roleIDs, permissionID, roleID)
+	if err := s.repo.DeleteEffectivePermissionsBySourceAndRolesTx(tx, roleIDs, permissionID, roleID); err != nil {
+		return api_error.InternalServerError("Repository error").WithErr(err)
+	}
+	return nil
 }
 
-func (s *service) rebuildSingleRoleEffectivePermissionsTx(tx *gorm.DB, role model.Role) error {
+func (s *service) rebuildSingleRoleEffectivePermissionsTx(tx *gorm.DB, role model.Role) *api_error.Error {
 	if err := tx.
 		Where("role_id = ?", role.ID).
 		Delete(&model.RoleEffectivePermission{}).Error; err != nil {
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
 	seen := make(map[string]struct{})
@@ -486,7 +495,7 @@ func (s *service) rebuildSingleRoleEffectivePermissionsTx(tx *gorm.DB, role mode
 	if role.RoleID != nil {
 		parentRole, err := s.repo.FindByIDTx(tx, *role.RoleID)
 		if err != nil {
-			return err
+			return api_error.InternalServerError("Internal error").WithErr(err)
 		}
 
 		for _, inherited := range parentRole.Role_effective_permissions {
@@ -500,7 +509,7 @@ func (s *service) rebuildSingleRoleEffectivePermissionsTx(tx *gorm.DB, role mode
 				SourceRoleID: inherited.SourceRoleID,
 				PermissionID: inherited.PermissionID,
 			}); err != nil {
-				return err
+				return api_error.InternalServerError("Internal error").WithErr(err)
 			}
 
 			seen[inherited.PermissionID] = struct{}{}
@@ -518,7 +527,7 @@ func (s *service) rebuildSingleRoleEffectivePermissionsTx(tx *gorm.DB, role mode
 			SourceRoleID: role.ID,
 			PermissionID: rp.PermissionID,
 		}); err != nil {
-			return err
+			return api_error.InternalServerError("Internal error").WithErr(err)
 		}
 
 		seen[rp.PermissionID] = struct{}{}
@@ -527,38 +536,38 @@ func (s *service) rebuildSingleRoleEffectivePermissionsTx(tx *gorm.DB, role mode
 	return nil
 }
 
-func (s *service) rebuildRoleTreeTx(tx *gorm.DB, roleID uuid.UUID) error {
+func (s *service) rebuildRoleTreeTx(tx *gorm.DB, roleID uuid.UUID) *api_error.Error {
 	role, err := s.repo.FindByIDTx(tx, roleID)
 	if err != nil {
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
 	if err := s.rebuildSingleRoleEffectivePermissionsTx(tx, role); err != nil {
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
 	children, err := s.repo.FindDescendantsOrderedTx(tx, roleID)
 	if err != nil {
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
 	for _, child := range children {
 		freshChild, err := s.repo.FindByIDTx(tx, child.ID)
 		if err != nil {
-			return err
+			return api_error.InternalServerError("Internal error").WithErr(err)
 		}
 		if err := s.rebuildSingleRoleEffectivePermissionsTx(tx, freshChild); err != nil {
-			return err
+			return api_error.InternalServerError("Internal error").WithErr(err)
 		}
 	}
 
 	return nil
 }
 
-func (s *service) normalizeDirectPermissionsAgainstParentTx(tx *gorm.DB, roleID uuid.UUID, strictMode bool) error {
+func (s *service) normalizeDirectPermissionsAgainstParentTx(tx *gorm.DB, roleID uuid.UUID, strictMode bool) *api_error.Error {
 	role, err := s.repo.FindByIDTx(tx, roleID)
 	if err != nil {
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
 	if role.RoleID == nil {
@@ -567,7 +576,7 @@ func (s *service) normalizeDirectPermissionsAgainstParentTx(tx *gorm.DB, roleID 
 
 	parentRole, err := s.repo.FindByIDTx(tx, *role.RoleID)
 	if err != nil {
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
 	parentEffectiveMap := make(map[string]string, len(parentRole.Role_effective_permissions))
@@ -593,7 +602,7 @@ func (s *service) normalizeDirectPermissionsAgainstParentTx(tx *gorm.DB, roleID 
 
 	remainingDirectCount, err := s.repo.CountDirectPermissionsNotInSetTx(tx, role.ID, duplicatedPermissionIDs)
 	if err != nil {
-		return err
+		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
 	if remainingDirectCount == 0 {
@@ -602,7 +611,7 @@ func (s *service) normalizeDirectPermissionsAgainstParentTx(tx *gorm.DB, roleID 
 
 	for _, permissionID := range duplicatedPermissionIDs {
 		if err := s.repo.DeleteDirectPermissionTx(tx, role.ID, permissionID); err != nil {
-			return err
+			return api_error.InternalServerError("Internal error").WithErr(err)
 		}
 
 		newSourceRoleID := parentEffectiveMap[permissionID]
@@ -614,7 +623,7 @@ func (s *service) normalizeDirectPermissionsAgainstParentTx(tx *gorm.DB, roleID 
 			role.ID,
 			uuid.MustParse(newSourceRoleID),
 		); err != nil {
-			return err
+			return api_error.InternalServerError("Internal error").WithErr(err)
 		}
 	}
 

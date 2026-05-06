@@ -44,10 +44,7 @@ func (h *handler) Create(c fiber.Ctx) error {
 	}
 
 	if err := h.service.Create(dto); err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError("Could not create role").WithErr(err)
+		return err
 	}
 
 	return c.SendStatus(fiber.StatusCreated)
@@ -58,10 +55,7 @@ func (h *handler) FindAll(c fiber.Ctx) error {
 
 	finded, err := h.service.FindAll(opts)
 	if err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError("Could not retrieve roles").WithErr(err)
+		return err
 	}
 
 	return c.JSON(finded)
@@ -72,10 +66,7 @@ func (h *handler) FindByID(c fiber.Ctx) error {
 
 	finded, err := h.service.FindByID(id)
 	if err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.NotFound("Role not found").WithErr(err)
+		return err
 	}
 
 	return c.Status(fiber.StatusOK).JSON(finded)
@@ -91,10 +82,7 @@ func (h *handler) UpdateHeader(c fiber.Ctx) error {
 	id := c.Params("id")
 
 	if err := h.service.UpdateHeader(id, input); err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError("Could not update role header").WithErr(err)
+		return err
 	}
 
 	return c.SendStatus(fiber.StatusOK)
@@ -110,10 +98,7 @@ func (h *handler) UpdateDetails(c fiber.Ctx) error {
 	id := c.Params("id")
 
 	if err := h.service.UpdateDetails(id, input); err != nil {
-		if apiErr, ok := err.(*api_error.Error); ok {
-			return apiErr
-		}
-		return api_error.InternalServerError("Could not update role details").WithErr(err)
+		return err
 	}
 
 	return c.SendStatus(fiber.StatusOK)

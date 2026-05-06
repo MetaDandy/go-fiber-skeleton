@@ -26,12 +26,12 @@ type passwordURepo interface {
 
 // PasswordService interface
 type PasswordService interface {
-	UserAuthProviders(email string) ([]string, error)
-	SignUpPassword(input SignUpPassword) error
-	LoginPassword(input LoginPassword) (string, string, error)
-	ForgotPassword(input ForgotPassword) error
-	ResetPassword(input ResetPassword) error
-	ChangePassword(userID string, input ChangePassword, ip string, userAgent string) error
+	UserAuthProviders(email string) ([]string, *api_error.Error)
+	SignUpPassword(input SignUpPassword) *api_error.Error
+	LoginPassword(input LoginPassword) (string, string, *api_error.Error)
+	ForgotPassword(input ForgotPassword) *api_error.Error
+	ResetPassword(input ResetPassword) *api_error.Error
+	ChangePassword(userID string, input ChangePassword, ip string, userAgent string) *api_error.Error
 }
 
 type passwordService struct {
@@ -50,10 +50,10 @@ func NewPasswordService(repo Repo, uRepo passwordURepo, mailService mail.EmailSe
 	}
 }
 
-func (s *passwordService) UserAuthProviders(email string) ([]string, error) {
+func (s *passwordService) UserAuthProviders(email string) ([]string, *api_error.Error) {
 	user, err := s.uRepo.FindByEmail(email)
 	if err != nil {
-		return []string{}, err
+		return []string{}, api_error.InternalServerError("User not found").WithErr(err)
 	}
 
 	providers := s.repo.UserAuthProviders(user.ID)
@@ -64,14 +64,14 @@ func (s *passwordService) UserAuthProviders(email string) ([]string, error) {
 	return providers, nil
 }
 
-func (s *passwordService) SignUpPassword(input SignUpPassword) error {
+func (s *passwordService) SignUpPassword(input SignUpPassword) *api_error.Error {
 	if err := s.uRepo.ExistsByEmail(input.Email); err == nil {
-		return fmt.Errorf("%s already exist", input.Email)
+		return api_error.Conflict("User already exists")
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return fmt.Errorf("failed to hash password: %w", err)
+		return api_error.InternalServerError("Failed to hash password").WithErr(err)
 	}
 
 	hashed := string(hash)
@@ -93,7 +93,7 @@ func (s *passwordService) SignUpPassword(input SignUpPassword) error {
 	}
 
 	if err := s.repo.Create(u, al, nil); err != nil {
-		return fmt.Errorf("failed to create user: %w", err)
+		return api_error.InternalServerError("Failed to create user").WithErr(err)
 	}
 
 	// Generar token de verificación de email
@@ -126,7 +126,7 @@ func (s *passwordService) SignUpPassword(input SignUpPassword) error {
 	return nil
 }
 
-func (s *passwordService) LoginPassword(input LoginPassword) (string, string, error) {
+func (s *passwordService) LoginPassword(input LoginPassword) (string, string, *api_error.Error) {
 	// Buscar el usuario por email
 	user, err := s.uRepo.FindByEmail(input.Email)
 	if err != nil {
@@ -230,18 +230,18 @@ func (s *passwordService) LoginPassword(input LoginPassword) (string, string, er
 	return accessToken, refreshToken, nil
 }
 
-func (s *passwordService) ForgotPassword(input ForgotPassword) error {
+func (s *passwordService) ForgotPassword(input ForgotPassword) *api_error.Error {
 	// Buscar el usuario
 	user, err := s.uRepo.FindByEmail(input.Email)
 	if err != nil {
-		return api_error.InternalServerError("Error")
+		return api_error.InternalServerError("An error occurred")
 	}
 
 	// Generar token
 	token, err := mail.GeneratePasswordResetToken()
 	if err != nil {
 		log.Printf("failed to generate password reset token: %v", err)
-		return api_error.InternalServerError("Error")
+		return api_error.InternalServerError("An error occurred")
 	}
 
 	// Construir estructuras para guardar
@@ -262,7 +262,7 @@ func (s *passwordService) ForgotPassword(input ForgotPassword) error {
 	// EL REPO MANEJA LA TRANSACCIÓN
 	if err := s.repo.SavePasswordResetTokenWithLog(prt, al); err != nil {
 		log.Printf("failed to save password reset token and log: %v", err)
-		return api_error.InternalServerError("Error")
+		return api_error.InternalServerError("An error occurred")
 	}
 
 	// Construir el link de reset
@@ -273,7 +273,7 @@ func (s *passwordService) ForgotPassword(input ForgotPassword) error {
 	ctx := context.Background()
 	if err := s.mailService.SendPasswordReset(ctx, user.Email, user.Name, resetLink); err != nil {
 		log.Printf("failed to send password reset email to %s: %v", user.Email, err)
-		return api_error.InternalServerError("Error")
+		return api_error.InternalServerError("An error occurred")
 	}
 
 	return nil
@@ -286,7 +286,7 @@ func (s *passwordService) getAppURL() string {
 	return "http://localhost:3000"
 }
 
-func (s *passwordService) ResetPassword(input ResetPassword) error {
+func (s *passwordService) ResetPassword(input ResetPassword) *api_error.Error {
 	tokenHash := mail.HashToken(input.Token)
 
 	// Buscar el token en BD
@@ -325,7 +325,7 @@ func (s *passwordService) ResetPassword(input ResetPassword) error {
 	return nil
 }
 
-func (s *passwordService) ChangePassword(userID string, input ChangePassword, ip string, userAgent string) error {
+func (s *passwordService) ChangePassword(userID string, input ChangePassword, ip string, userAgent string) *api_error.Error {
 	// Obtener el usuario
 	user, err := s.uRepo.FindByID(userID)
 	if err != nil {
