@@ -98,5 +98,8 @@ func (s *service) UpdateDetails(userID string, input UpdateDetails) *api_error.E
 		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
-	return api_error.InternalServerError("Failed to commit").WithErr(tx.Commit().Error)
+	if err := tx.Commit().Error; err != nil {
+		return api_error.InternalServerError("Failed to commit").WithErr(err)
+	}
+	return nil
 }
