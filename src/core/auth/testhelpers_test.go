@@ -27,9 +27,9 @@ import (
 )
 
 var (
-	testDB   *gorm.DB
-	dbOnce   sync.Once
-	dbDSN    string
+	testDB *gorm.DB
+	dbOnce sync.Once
+	dbDSN  string
 )
 
 // setupTestContainer creates a PostgreSQL container and runs migrations.
@@ -147,11 +147,11 @@ func createTestUser(t *testing.T, db *gorm.DB) *model.User {
 
 	pwd := "hashedpassword"
 	user := &model.User{
-		ID:        uuid.New(),
-		Name:      "Test User",
-		Email:     fmt.Sprintf("test-%s@example.com", uuid.New().String()),
-		Password:  &pwd,
-		RoleID:    role.ID,
+		ID:       uuid.New(),
+		Name:     "Test User",
+		Email:    fmt.Sprintf("test-%s@example.com", uuid.New().String()),
+		Password: &pwd,
+		RoleID:   role.ID,
 	}
 	if err := db.Create(user).Error; err != nil {
 		t.Fatalf("failed to create test user: %v", err)
@@ -171,19 +171,6 @@ func createTestPermission(t *testing.T, db *gorm.DB, code string) *model.Permiss
 		t.Fatalf("failed to create test permission: %v", err)
 	}
 	return perm
-}
-
-// assignRolePermission assigns a permission to a role.
-func assignRolePermission(t *testing.T, db *gorm.DB, roleID uuid.UUID, permissionID string) {
-	t.Helper()
-	rp := &model.RolePermission{
-		ID:           uuid.New(),
-		RoleID:       roleID,
-		PermissionID: permissionID,
-	}
-	if err := db.Create(rp).Error; err != nil {
-		t.Fatalf("failed to assign role permission: %v", err)
-	}
 }
 
 // assignUserPermission assigns a permission directly to a user.

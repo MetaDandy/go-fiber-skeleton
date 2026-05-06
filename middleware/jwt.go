@@ -14,7 +14,7 @@ import (
 
 // TokenProvider define lo que el middleware necesita para refrescar tokens
 type TokenProvider interface {
-	RefreshToken(refreshToken, ip, userAgent string) (newToken string, newRefreshToken string, err error)
+	RefreshToken(refreshToken, ip, userAgent string) (newToken string, newRefreshToken string, err *api_error.Error)
 }
 
 func Jwt(provider TokenProvider) fiber.Handler {
@@ -78,9 +78,7 @@ func tryRefreshToken(c fiber.Ctx, provider TokenProvider) error {
 	// Usar la interfaz inyectada para rotar el token
 	newToken, newRefreshToken, err := provider.RefreshToken(refreshToken, ip, userAgent)
 	if err != nil {
-		// Si el refresh falla, limpiar cookies y pedir login
-		cookie.ClearAllAuthCookies(c)
-		return api_error.Unauthorized("Session expired, please login again").WithErr(err)
+		return err
 	}
 
 	// Setear las nuevas cookies
@@ -88,11 +86,11 @@ func tryRefreshToken(c fiber.Ctx, provider TokenProvider) error {
 	cookie.SetRefreshTokenCookie(c, newRefreshToken)
 
 	// Volver a validar el NUEVO token para llenar Locals
-	token, err := jwt.Parse(newToken, func(token *jwt.Token) (interface{}, error) {
+	token, parseErr := jwt.Parse(newToken, func(token *jwt.Token) (interface{}, error) {
 		return []byte(os.Getenv("JWT_SECRET")), nil
 	})
-	if err != nil {
-		return api_error.Unauthorized("Failed to parse newly generated token").WithErr(err)
+	if parseErr != nil {
+		return api_error.Unauthorized("Failed to parse newly generated token").WithErr(parseErr)
 	}
 
 	if claims, ok := token.Claims.(jwt.MapClaims); ok {

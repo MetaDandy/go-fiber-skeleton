@@ -131,7 +131,7 @@ func TestPermissionRepo_AllExists_Valid(t *testing.T) {
 
 	// Test with all existing IDs
 	err := repo.AllExists([]string{"perm-a", "perm-b", "perm-c"})
-	assert.NoError(t, err, "AllExists should succeed when all IDs exist")
+	assert.Nil(t, err, "AllExists should succeed when all IDs exist")
 }
 
 // TestPermissionRepo_AllExists_Invalid tests AllExists with some invalid IDs
@@ -162,5 +162,5 @@ func TestPermissionRepo_AllExists_Empty(t *testing.T) {
 
 	// Test with empty slice - should return nil without DB call
 	err := repo.AllExists([]string{})
-	assert.NoError(t, err, "AllExists with empty slice should return nil")
+	assert.Nil(t, err, "AllExists with empty slice should return nil")
 }

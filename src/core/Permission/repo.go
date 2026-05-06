@@ -2,8 +2,8 @@ package permission
 
 import (
 	"context"
-	"errors"
 
+	"github.com/MetaDandy/go-fiber-skeleton/api_error"
 	"github.com/MetaDandy/go-fiber-skeleton/helper"
 	"github.com/MetaDandy/go-fiber-skeleton/src/generated"
 	"github.com/MetaDandy/go-fiber-skeleton/src/model"
@@ -13,7 +13,7 @@ import (
 type Repo interface {
 	FindByID(id string) (model.Permission, error)
 	FindAll(opts *helper.FindAllOptions) ([]model.Permission, int64, error)
-	AllExists(ids []string) error
+	AllExists(ids []string) *api_error.Error
 }
 
 type repo struct {
@@ -69,7 +69,7 @@ func (r *repo) FindAll(opts *helper.FindAllOptions) ([]model.Permission, int64, 
 	return finded, total, err
 }
 
-func (r *repo) AllExists(ids []string) error {
+func (r *repo) AllExists(ids []string) *api_error.Error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -78,11 +78,11 @@ func (r *repo) AllExists(ids []string) error {
 	if err := r.db.Model(&model.Permission{}).
 		Where(generated.Permission.ID.In(ids...)).
 		Count(&count).Error; err != nil {
-		return err
+		return api_error.InternalServerError("Could not verify permissions").WithErr(err)
 	}
 
 	if count != int64(len(ids)) {
-		return errors.New("one or more permissions do not exist")
+		return api_error.BadRequest("one or more permissions do not exist")
 	}
 
 	return nil
