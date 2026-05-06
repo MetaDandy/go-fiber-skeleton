@@ -11,6 +11,20 @@ type PermissionChecker interface {
 }
 
 type Service interface {
+	// UpdateDetails updates a user's permissions by adding and/or removing permission IDs.
+	//
+	// Flow:
+	//   1. Validates that at least one of Add or Remove contains elements
+	//   2. Parses and validates the userID as a valid UUID
+	//   3. Verifies that all permission IDs in Add exist (via PermissionChecker)
+	//   4. Removes duplicate IDs that appear in both Add and Remove arrays
+	//   5. Begins a database transaction
+	//   6. Calls UpdatePermissionsTx to persist changes
+	//   7. Commits the transaction
+	//
+	// Possible errors:
+	//   - BadRequest (400): Invalid user ID, or both Add and Remove are empty
+	//   - InternalServerError (500): Database error, permission check failure, or commit failure
 	UpdateDetails(userID string, input UpdateDetails) *api_error.Error
 }
 
