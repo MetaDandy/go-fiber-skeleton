@@ -1,6 +1,7 @@
 package role
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/MetaDandy/go-fiber-skeleton/api_error"
@@ -53,56 +54,44 @@ func TestCreate_ReturnsError_WhenPermissionAlreadyInherited(t *testing.T) {
 
 	svc := NewService(repo, checker)
 
-	// Create parent role first
-	parentID := uuid.New()
-	parentRole := model.Role{
-		ID:          parentID,
-		Name:        "Parent Role",
-		Description: "Parent",
+	// Create parent role via service with role.create permission
+	parentInput := Create{
+		Name:        "Parent Role Inherited",
+		Description: "Parent role with permission",
+		Permissions: []string{"role.create"},
 	}
-	parentRP := []model.RolePermission{
-		{ID: uuid.New(), RoleID: parentID, PermissionID: "role.create"},
+	createErr := svc.Create(parentInput)
+	if createErr != nil {
+		t.Logf("Parent creation error: %s - %s", createErr.Code, createErr.Message)
 	}
-	parentREP := []model.RoleEffectivePermission{
-		{ID: uuid.New(), RoleID: parentID, SourceRoleID: parentID, PermissionID: "role.create"},
+	if createErr != nil {
+		t.Fatalf("Parent role should be created successfully but got: %s", createErr.Message)
 	}
-	err := repo.Create(parentRole, parentRP, parentREP)
-	assert.NoError(t, err)
 
-	// Now try to create child with same permission that parent has
-	roleID := uuid.New()
-	childRole := model.Role{
-		ID:     roleID,
-		Name:   "Child Role",
-		RoleID: &parentID,
+	// Query parent back to get the actual ID assigned by the service
+	var parentRole model.Role
+	dbErr := db.Where("name = ?", "Parent Role Inherited").First(&parentRole).Error
+	if dbErr != nil {
+		t.Fatalf("Should find the created parent role: %v", dbErr)
 	}
-	childRP := []model.RolePermission{
-		{ID: uuid.New(), RoleID: roleID, PermissionID: "role.create"}, // Same as parent
-	}
-	childREP := []model.RoleEffectivePermission{
-		{ID: uuid.New(), RoleID: roleID, SourceRoleID: roleID, PermissionID: "role.create"},
-	}
-	err = repo.Create(childRole, childRP, childREP)
-	assert.NoError(t, err)
+	parentIDStr := parentRole.ID.String()
 
-	// Now test via service - should detect the conflict via effective permissions check
-	parentRoleRet, err := repo.FindByID(parentID)
-	assert.NoError(t, err)
-
-	// Check if parent's effective permissions include role.create
-	hasInherited := false
-	for _, rep := range parentRoleRet.Role_effective_permissions {
-		if rep.PermissionID == "role.create" {
-			hasInherited = true
-			break
-		}
+	// Now try to create child via service with SAME permission that parent has inherited
+	// This should fail because the permission is already inherited from parent
+	childInput := Create{
+		Name:        "Child Role",
+		Permissions: []string{"role.create"}, // Same as parent's - should fail
+		RoleID:      &parentIDStr,
 	}
-	assert.True(t, hasInherited, "Parent should have role.create in effective permissions")
+	childErr := svc.Create(childInput)
 
-	// Now verify service properly validates inherited permissions
-	// The service's Create method checks this at lines 64-76
-	// For now we verify the data is set up correctly
-	_ = svc // Service instance is ready for future test scenarios
+	// Verify error is returned
+	if childErr == nil {
+		t.Fatalf("Create should fail when permission is already inherited from parent")
+	}
+	if !strings.Contains(childErr.Message, "already inherited from parent or ancestor role") {
+		t.Fatalf("Expected error about inherited permission, got: %s", childErr.Message)
+	}
 }
 
 // Test 3.4: TestCreate_Success_WithParentRole
@@ -115,46 +104,54 @@ func TestCreate_Success_WithParentRole(t *testing.T) {
 
 	svc := NewService(repo, checker)
 
-	// Create parent role first
-	parentID := uuid.New()
-	parentRole := model.Role{
-		ID:          parentID,
-		Name:        "Parent Role",
-		Description: "Parent with permission",
+	// Create parent role via service with role.list permission
+	parentInput := Create{
+		Name:        "Parent Role Test",
+		Description: "Parent role with permission",
+		Permissions: []string{"role.list"},
 	}
-	parentRP := []model.RolePermission{
-		{ID: uuid.New(), RoleID: parentID, PermissionID: "role.list"},
+	createErr := svc.Create(parentInput)
+	if createErr != nil {
+		t.Logf("Parent creation error: %s - %s", createErr.Code, createErr.Message)
 	}
-	parentREP := []model.RoleEffectivePermission{
-		{ID: uuid.New(), RoleID: parentID, SourceRoleID: parentID, PermissionID: "role.list"},
+	if createErr != nil {
+		t.Fatalf("Parent role should be created successfully but got: %s", createErr.Message)
 	}
-	err := repo.Create(parentRole, parentRP, parentREP)
-	assert.NoError(t, err)
 
-	// Create child role via service with different permission (not inherited)
-	roleID := uuid.New()
-	childRole := model.Role{
-		ID:     roleID,
-		Name:   "Child Role",
-		RoleID: &parentID,
+	// Query parent back to get the actual ID assigned by the service
+	var parentRole model.Role
+	dbErr := db.Where("name = ?", "Parent Role Test").First(&parentRole).Error
+	if dbErr != nil {
+		t.Fatalf("Should find the created parent role: %v", dbErr)
 	}
-	childRP := []model.RolePermission{
-		{ID: uuid.New(), RoleID: roleID, PermissionID: "role.create"}, // Different from parent
+	parentIDStr := parentRole.ID.String()
+
+	// Create child role via service with DIFFERENT permission (not inherited from parent)
+	childInput := Create{
+		Name:        "Child Role Test",
+		Permissions: []string{"role.create"}, // Different from parent's role.list - should succeed
+		RoleID:      &parentIDStr,
 	}
-	// Child should inherit parent's effective + have its own
-	childREP := []model.RoleEffectivePermission{
-		{ID: uuid.New(), RoleID: roleID, SourceRoleID: parentID, PermissionID: "role.list"}, // Inherited
-		{ID: uuid.New(), RoleID: roleID, SourceRoleID: roleID, PermissionID: "role.create"},       // Own
+	childErr := svc.Create(childInput)
+	if childErr != nil {
+		t.Fatalf("Child role should be created successfully with non-inherited permission but got: %s", childErr.Message)
 	}
-	err = repo.Create(childRole, childRP, childREP)
-	assert.NoError(t, err)
+
+	// Query child back to get its actual ID
+	var childRole model.Role
+	dbErr = db.Where("name = ?", "Child Role Test").First(&childRole).Error
+	if dbErr != nil {
+		t.Fatalf("Should find the created child role: %v", dbErr)
+	}
 
 	// Verify child has both inherited and own permissions
-	childRet, err := repo.FindByID(roleID)
-	assert.NoError(t, err)
-	assert.Len(t, childRet.Role_effective_permissions, 2)
-
-	_ = svc // Service instance ready
+	childRet, findErr := repo.FindByID(childRole.ID)
+	if findErr != nil {
+		t.Fatalf("Failed to find child role: %v", findErr)
+	}
+	if len(childRet.Role_effective_permissions) != 2 {
+		t.Fatalf("Child should have 2 effective permissions (1 inherited + 1 own), got %d", len(childRet.Role_effective_permissions))
+	}
 }
 
 // Test 3.5: TestFindByID_ReturnsRole_WhenExists
@@ -238,8 +235,6 @@ func TestFindAll_ReturnsPaginatedRoles(t *testing.T) {
 }
 
 // Test 3.7: TestUpdateHeader_UpdatesRoleParent
-// Note: This requires complex rebuild logic that has transaction issues in test environment.
-// The test demonstrates the service structure exists.
 func TestUpdateHeader_UpdatesRoleParent(t *testing.T) {
 	db := setupTestContainer(t)
 	repo := NewRepo(db)
@@ -249,43 +244,88 @@ func TestUpdateHeader_UpdatesRoleParent(t *testing.T) {
 
 	svc := NewService(repo, checker)
 
-	// Create parent role
-	parentID := uuid.New()
-	parent := model.Role{
-		ID:   parentID,
-		Name: "Parent Role",
+	// Create first parent role via service
+	parent1Input := Create{
+		Name:        "First Parent Update",
+		Permissions: []string{"role.create"},
 	}
-	rp := []model.RolePermission{
-		{ID: uuid.New(), RoleID: parentID, PermissionID: "role.create"},
+	err := svc.Create(parent1Input)
+	if err != nil {
+		t.Logf("First parent creation error: %s - %s", err.Code, err.Message)
 	}
-	rep := []model.RoleEffectivePermission{
-		{ID: uuid.New(), RoleID: parentID, SourceRoleID: parentID, PermissionID: "role.create"},
+	if err != nil {
+		t.Fatalf("First parent should be created: %s", err.Message)
 	}
-	err := repo.Create(parent, rp, rep)
-	assert.NoError(t, err)
 
-	// Create child role
-	childID := uuid.New()
-	child := model.Role{
-		ID:   childID,
-		Name: "Child Role",
+	// Query first parent back to get its actual ID
+	var parent1 model.Role
+	dbErr := db.Where("name = ?", "First Parent Update").First(&parent1).Error
+	if dbErr != nil {
+		t.Fatalf("Should find first parent: %v", dbErr)
 	}
-	childRP := []model.RolePermission{
-		{ID: uuid.New(), RoleID: childID, PermissionID: "role.list"},
-	}
-	childREP := []model.RoleEffectivePermission{
-		{ID: uuid.New(), RoleID: childID, SourceRoleID: childID, PermissionID: "role.list"},
-	}
-	err = repo.Create(child, childRP, childREP)
-	assert.NoError(t, err)
+	parent1IDStr := parent1.ID.String()
 
-	// Service instance is ready - the UpdateHeader method exists
-	// Testing actual parent change requires transaction rebuild logic
-	_ = svc
+	// Create second parent role via service
+	parent2Input := Create{
+		Name:        "Second Parent Update",
+		Permissions: []string{"role.update"},
+	}
+	err = svc.Create(parent2Input)
+	if err != nil {
+		t.Fatalf("Second parent should be created: %s", err.Message)
+	}
+
+	// Query second parent back to get its actual ID
+	var parent2 model.Role
+	dbErr = db.Where("name = ?", "Second Parent Update").First(&parent2).Error
+	if dbErr != nil {
+		t.Fatalf("Should find second parent: %v", dbErr)
+	}
+	parent2IDStr := parent2.ID.String()
+
+	// Create child role initially under first parent
+	childInput := Create{
+		Name:        "Child Role Update",
+		Permissions: []string{"role.list"},
+		RoleID:      &parent1IDStr,
+	}
+	err = svc.Create(childInput)
+	if err != nil {
+		t.Fatalf("Child should be created: %s", err.Message)
+	}
+
+	// Query child back to get its actual ID
+	var child model.Role
+	dbErr = db.Where("name = ?", "Child Role Update").First(&child).Error
+	if dbErr != nil {
+		t.Fatalf("Should find child: %v", dbErr)
+	}
+	childIDStr := child.ID.String()
+
+	// Now call UpdateHeader to change the parent from first to second parent
+	updateInput := UpdateHeader{
+		RoleID:     &parent2IDStr,
+		StrictMode: true,
+	}
+	updateErr := svc.UpdateHeader(childIDStr, updateInput)
+	if updateErr != nil {
+		t.Fatalf("UpdateHeader should succeed but got: %s", updateErr.Message)
+	}
+
+	// Verify the child's parent was changed
+	updatedChild, findErr := repo.FindByID(child.ID)
+	if findErr != nil {
+		t.Fatalf("Failed to find updated child: %v", findErr)
+	}
+	if updatedChild.RoleID == nil {
+		t.Fatal("Child should have a parent")
+	}
+	if *updatedChild.RoleID != parent2.ID {
+		t.Fatalf("Child's parent should be second parent, got: %s", updatedChild.RoleID)
+	}
 }
 
 // Test 3.8: TestUpdateHeader_NormalizesPermissionsOnParentChange
-// Note: Same complexity issue - testing service exists
 func TestUpdateHeader_NormalizesPermissionsOnParentChange(t *testing.T) {
 	db := setupTestContainer(t)
 	repo := NewRepo(db)
@@ -295,30 +335,97 @@ func TestUpdateHeader_NormalizesPermissionsOnParentChange(t *testing.T) {
 
 	svc := NewService(repo, checker)
 
-	// Create parent role
-	parentID := uuid.New()
-	parent := model.Role{
-		ID:   parentID,
-		Name: "Parent Role",
+	// Create original parent role with role.create permission
+	originalParentID := uuid.New()
+	originalParent := model.Role{
+		ID:   originalParentID,
+		Name: "Original Parent",
 	}
-	rp := []model.RolePermission{
-		{ID: uuid.New(), RoleID: parentID, PermissionID: "role.create"},
+	originalParentRP := []model.RolePermission{
+		{ID: uuid.New(), RoleID: originalParentID, PermissionID: "role.create"},
 	}
-	rep := []model.RoleEffectivePermission{
-		{ID: uuid.New(), RoleID: parentID, SourceRoleID: parentID, PermissionID: "role.create"},
+	originalParentREP := []model.RoleEffectivePermission{
+		{ID: uuid.New(), RoleID: originalParentID, SourceRoleID: originalParentID, PermissionID: "role.create"},
 	}
-	err := repo.Create(parent, rp, rep)
+	err := repo.Create(originalParent, originalParentRP, originalParentREP)
 	assert.NoError(t, err)
 
-	// Service with strict mode config is ready
-	// Testing actual normalization requires complete hierarchy rebuild
-	_ = svc
+	// Create new parent role with role.update permission (overlaps with child's direct)
+	newParentID := uuid.New()
+	newParent := model.Role{
+		ID:   newParentID,
+		Name: "New Parent",
+	}
+	newParentRP := []model.RolePermission{
+		{ID: uuid.New(), RoleID: newParentID, PermissionID: "role.update"},
+	}
+	newParentREP := []model.RoleEffectivePermission{
+		{ID: uuid.New(), RoleID: newParentID, SourceRoleID: newParentID, PermissionID: "role.update"},
+	}
+	err = repo.Create(newParent, newParentRP, newParentREP)
+	assert.NoError(t, err)
+
+	// Create child role with TWO direct permissions: role.update (will be normalized) and role.list (will remain)
+	childID := uuid.New()
+	child := model.Role{
+		ID:     childID,
+		Name:   "Child Role",
+		RoleID: &originalParentID,
+	}
+	childRP := []model.RolePermission{
+		{ID: uuid.New(), RoleID: childID, PermissionID: "role.update"}, // This will be normalized away
+		{ID: uuid.New(), RoleID: childID, PermissionID: "role.list"},  // This will remain
+	}
+	childREP := []model.RoleEffectivePermission{
+		{ID: uuid.New(), RoleID: childID, SourceRoleID: originalParentID, PermissionID: "role.create"},
+		{ID: uuid.New(), RoleID: childID, SourceRoleID: childID, PermissionID: "role.update"},
+		{ID: uuid.New(), RoleID: childID, SourceRoleID: childID, PermissionID: "role.list"},
+	}
+	err = repo.Create(child, childRP, childREP)
+	assert.NoError(t, err)
+
+	// Call UpdateHeader to change parent with strictMode=true
+	// This should normalize permissions - remove child's direct role.update
+	// because it's now inherited from new parent
+	newParentIDStr := newParentID.String()
+	input := UpdateHeader{
+		RoleID:     &newParentIDStr,
+		StrictMode: true,
+	}
+
+	var apiErr *api_error.Error
+	apiErr = svc.UpdateHeader(childID.String(), input)
+	if apiErr != nil {
+		t.Logf("UpdateHeader returned error: Code=%s, Message=%s", apiErr.Code, apiErr.Message)
+		if apiErr.Err != nil {
+			t.Logf("Inner error: %v", apiErr.Err)
+		}
+	}
+
+	// Verify the call succeeded - permission was normalized
+	if apiErr != nil {
+		t.Errorf("UpdateHeader should succeed but got error: Code=%s, Message=%s", apiErr.Code, apiErr.Message)
+		return
+	}
+
+	// Verify the child's role now has new parent
+	updatedChild, err := repo.FindByID(childID)
+	assert.NoError(t, err)
+	assert.NotNil(t, updatedChild.RoleID, "Child should have a parent")
+	assert.Equal(t, newParentID, *updatedChild.RoleID)
+
+	// Verify child's direct permissions were normalized (role.update should be gone from direct)
+	hasDirectRoleUpdate := false
+	for _, rp := range updatedChild.Role_permissions {
+		if rp.PermissionID == "role.update" {
+			hasDirectRoleUpdate = true
+			break
+		}
+	}
+	assert.False(t, hasDirectRoleUpdate, "Direct permission role.update should be removed due to parent overlap")
 }
 
 // Test 3.9: TestUpdateDetails_AddsPermissions_WithPropagation
-// Note: This test exercises complex transaction logic in the service.
-// Due to the cascade rebuilds in propagateAddTx, this may fail in test environment.
-// We verify the input validation passes instead.
 func TestUpdateDetails_AddsPermissions_WithPropagation(t *testing.T) {
 	db := setupTestContainer(t)
 	repo := NewRepo(db)
@@ -328,7 +435,7 @@ func TestUpdateDetails_AddsPermissions_WithPropagation(t *testing.T) {
 
 	svc := NewService(repo, checker)
 
-	// Create a simple role
+	// Create a simple role with role.list as direct permission
 	roleID := uuid.New()
 	role := model.Role{
 		ID:   roleID,
@@ -343,19 +450,48 @@ func TestUpdateDetails_AddsPermissions_WithPropagation(t *testing.T) {
 	err := repo.Create(role, rp, rep)
 	assert.NoError(t, err)
 
-	// Test input validation - add must not be empty OR remove must not be empty
+	// Call UpdateDetails to add a new permission
 	input := UpdateDetails{
 		Add: []string{"role.update"},
 	}
 
-	// The service should process the request (may fail on transaction, but validates input)
-	_ = input
-	_ = svc // Service is ready for testing
+	var apiErr *api_error.Error
+	apiErr = svc.UpdateDetails(roleID.String(), input)
+	if apiErr != nil {
+		t.Logf("UpdateDetails returned error: %v, Message: %s", apiErr, apiErr.Message)
+	}
+
+	// Verify the permission was added successfully - use assert.Nil instead
+	if apiErr != nil {
+		t.Errorf("UpdateDetails should succeed but got error: %v, Message: %s", apiErr, apiErr.Message)
+		return
+	}
+
+	// Verify the new permission exists in direct permissions
+	updatedRole, err := repo.FindByID(roleID)
+	assert.NoError(t, err)
+
+	hasRoleUpdate := false
+	for _, rp := range updatedRole.Role_permissions {
+		if rp.PermissionID == "role.update" {
+			hasRoleUpdate = true
+			break
+		}
+	}
+	assert.True(t, hasRoleUpdate, "Permission role.update should be added as direct permission")
+
+	// Verify permission is in effective permissions (propagated)
+	hasEffectiveRoleUpdate := false
+	for _, ep := range updatedRole.Role_effective_permissions {
+		if ep.PermissionID == "role.update" {
+			hasEffectiveRoleUpdate = true
+			break
+		}
+	}
+	assert.True(t, hasEffectiveRoleUpdate, "Permission role.update should be in effective permissions")
 }
 
 // Test 3.10: TestUpdateDetails_RemovesPermissions_WithPropagation
-// Note: Same complexity issue as TestUpdateDetails_AddsPermissions.
-// Testing input validation path.
 func TestUpdateDetails_RemovesPermissions_WithPropagation(t *testing.T) {
 	db := setupTestContainer(t)
 	repo := NewRepo(db)
@@ -365,7 +501,7 @@ func TestUpdateDetails_RemovesPermissions_WithPropagation(t *testing.T) {
 
 	svc := NewService(repo, checker)
 
-	// Create role
+	// Create role with multiple direct permissions
 	roleID := uuid.New()
 	role := model.Role{
 		ID:   roleID,
@@ -382,13 +518,55 @@ func TestUpdateDetails_RemovesPermissions_WithPropagation(t *testing.T) {
 	err := repo.Create(role, rp, rep)
 	assert.NoError(t, err)
 
-	// Test removing a direct permission
+	// Call UpdateDetails to remove role.list (keeping role.create)
 	input := UpdateDetails{
 		Remove: []string{"role.list"},
 	}
 
-	_ = input
-	_ = svc // Service is ready
+	var apiErr *api_error.Error
+	apiErr = svc.UpdateDetails(roleID.String(), input)
+	if apiErr != nil {
+		t.Logf("UpdateDetails returned error: %v, Message: %s", apiErr, apiErr.Message)
+	}
+
+	// Verify the permission was removed successfully - use explicit check instead
+	if apiErr != nil {
+		t.Errorf("UpdateDetails should succeed but got error: %v, Message: %s", apiErr, apiErr.Message)
+		return
+	}
+
+	// Verify role.list is no longer a direct permission
+	updatedRole, err := repo.FindByID(roleID)
+	assert.NoError(t, err)
+
+	hasRoleList := false
+	for _, rp := range updatedRole.Role_permissions {
+		if rp.PermissionID == "role.list" {
+			hasRoleList = true
+			break
+		}
+	}
+	assert.False(t, hasRoleList, "Permission role.list should be removed from direct permissions")
+
+	// Verify role.create still exists as direct
+	hasRoleCreate := false
+	for _, rp := range updatedRole.Role_permissions {
+		if rp.PermissionID == "role.create" {
+			hasRoleCreate = true
+			break
+		}
+	}
+	assert.True(t, hasRoleCreate, "Permission role.create should still exist as direct permission")
+
+	// Verify role.list is no longer in effective permissions (propagation removes it)
+	hasEffectiveRoleList := false
+	for _, ep := range updatedRole.Role_effective_permissions {
+		if ep.PermissionID == "role.list" {
+			hasEffectiveRoleList = true
+			break
+		}
+	}
+	assert.False(t, hasEffectiveRoleList, "Permission role.list should be removed from effective permissions")
 }
 
 // Test 3.11: TestUpdateDetails_ReturnsError_WhenRemovingLastDirectPermission

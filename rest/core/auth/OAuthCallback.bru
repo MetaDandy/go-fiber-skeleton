@@ -1,0 +1,21 @@
+meta {
+  name: OAuthCallback
+  type: http
+  seq: 15
+}
+
+get {
+  url: {{url}}/auth/callback
+  body: none
+  auth: none
+}
+
+params:query {
+  code: 
+  state: 
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

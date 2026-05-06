@@ -134,6 +134,10 @@ func (s *service) FindByID(id string) (*response.Role, *api_error.Error) {
 }
 
 func (s *service) FindAll(opts *helper.FindAllOptions) (*response.Paginated[response.Role], *api_error.Error) {
+	if opts.Limit == 0 {
+		return nil, api_error.BadRequest("Limit cannot be zero")
+	}
+
 	finded, total, err := s.repo.FindAll(opts)
 	if err != nil {
 		return nil, api_error.InternalServerError("Database error").WithErr(err)

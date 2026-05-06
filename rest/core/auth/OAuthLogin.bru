@@ -1,0 +1,20 @@
+meta {
+  name: OAuthLogin
+  type: http
+  seq: 14
+}
+
+get {
+  url: {{url}}/auth/login/:provider
+  body: none
+  auth: none
+}
+
+params:path {
+  provider: google
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

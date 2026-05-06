@@ -1,0 +1,27 @@
+meta {
+  name: UpdateDetails
+  type: http
+  seq: 1
+}
+
+patch {
+  url: {{url}}/user-permission/:user_id
+  body: json
+  auth: inherit
+}
+
+params:path {
+  user_id: 
+}
+
+body:json {
+  {
+    "add": ["permission.create"],
+    "remove": ["permission.read"]
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
