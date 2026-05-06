@@ -142,7 +142,7 @@ func TestRoleRepo_FindAll_ILIKE(t *testing.T) {
 	assert.Equal(t, "Admin Role", results[0].Name)
 
 	// Search by description - "user" appears in "User Role" name and "Regular user" description
-	// But both are the same role, so total should be 1
+	// Search for "user" now returns only "User Role" (1 result)
 	results, total, err = repo.FindAll(&helper.FindAllOptions{Search: "user"})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(1), total)

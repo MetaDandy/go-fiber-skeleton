@@ -241,7 +241,10 @@ func (s *service) UpdateHeader(id string, input UpdateHeader) *api_error.Error {
 		return api_error.InternalServerError("Internal error").WithErr(err)
 	}
 
-	return api_error.InternalServerError("Failed to commit").WithErr(tx.Commit().Error)
+	if err := tx.Commit().Error; err != nil {
+		return api_error.InternalServerError("Failed to commit").WithErr(err)
+	}
+	return nil
 }
 
 func (s *service) UpdateDetails(id string, input UpdateDetails) *api_error.Error {
@@ -396,7 +399,10 @@ func (s *service) UpdateDetails(id string, input UpdateDetails) *api_error.Error
 		}
 	}
 
-	return api_error.InternalServerError("Failed to commit").WithErr(tx.Commit().Error)
+	if err := tx.Commit().Error; err != nil {
+		return api_error.InternalServerError("Failed to commit").WithErr(err)
+	}
+	return nil
 }
 
 func (s *service) propagateAddTx(tx *gorm.DB, roleID uuid.UUID, permissionID string, strictMode bool) *api_error.Error {

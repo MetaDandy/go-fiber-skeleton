@@ -3,6 +3,7 @@ package authentication
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/MetaDandy/go-fiber-skeleton/src/model"
 	"github.com/google/uuid"
@@ -188,4 +189,115 @@ func TestResendVerificationEmail_NoEmail(t *testing.T) {
 	err := s.ResendVerificationEmail("")
 	assert.NotNil(t, err)
 	assert.Equal(t, 400, err.Status)
+}
+
+func TestVerifyEmail_Success(t *testing.T) {
+	// Arrange
+	repo := new(MockEmailRepo)
+	uRepo := new(MockEmailURepo)
+	mailService := new(MockMailService)
+	s := NewEmailService(repo, uRepo, mailService)
+
+	userID := uuid.New()
+	validToken := model.EmailVerificationToken{
+		ID:        uuid.New(),
+		TokenHash: "hashed_valid_token",
+		UserID:    userID,
+		CreatedAt: time.Now().Add(-1 * time.Hour), // Within 24 hours
+	}
+
+	repo.On("GetEmailVerificationTokenByHash", mock.Anything).Return(validToken, nil)
+	repo.On("MarkEmailAsVerified", userID).Return(nil)
+	repo.On("InvalidateOldEmailTokens", userID).Return(nil)
+
+	// Act
+	err := s.VerifyEmail("valid_token")
+
+	// Assert
+	assert.Nil(t, err)
+	repo.AssertExpectations(t)
+}
+
+func TestVerifyEmail_ReturnsError_WhenTokenExpired(t *testing.T) {
+	// Arrange
+	repo := new(MockEmailRepo)
+	uRepo := new(MockEmailURepo)
+	mailService := new(MockMailService)
+	s := NewEmailService(repo, uRepo, mailService)
+
+	userID := uuid.New()
+	expiredToken := model.EmailVerificationToken{
+		ID:        uuid.New(),
+		TokenHash: "hashed_expired_token",
+		UserID:    userID,
+		CreatedAt: time.Now().Add(-48 * time.Hour), // Older than 24 hours
+	}
+
+	repo.On("GetEmailVerificationTokenByHash", mock.Anything).Return(expiredToken, nil)
+
+	// Act
+	err := s.VerifyEmail("expired_token")
+
+	// Assert
+	assert.NotNil(t, err)
+	assert.Equal(t, 401, err.Status)
+	assert.Contains(t, err.Message, "expired")
+}
+
+func TestResendVerificationEmail_SendsNewToken(t *testing.T) {
+	// Arrange
+	repo := new(MockEmailRepo)
+	uRepo := new(MockEmailURepo)
+	mailService := new(MockMailService)
+	s := NewEmailService(repo, uRepo, mailService)
+
+	email := "test@example.com"
+	userID := uuid.New()
+	unverifiedUser := model.User{
+		ID:            userID,
+		Email:         email,
+		Name:          "Test User",
+		EmailVerified: false,
+	}
+
+	uRepo.On("FindByEmail", email).Return(unverifiedUser, nil)
+	repo.On("InvalidateOldEmailTokens", userID).Return(nil)
+	repo.On("SaveEmailVerificationToken", mock.Anything).Return(nil)
+	mailService.On("SendVerificationEmail", mock.Anything, email, "Test User", mock.Anything).Return(nil)
+
+	// Act
+	err := s.ResendVerificationEmail(email)
+
+	// Assert
+	assert.Nil(t, err)
+	uRepo.AssertExpectations(t)
+	repo.AssertExpectations(t)
+	mailService.AssertExpectations(t)
+}
+
+func TestResendVerificationEmail_ReturnsError_WhenAlreadyVerified(t *testing.T) {
+	// Arrange
+	repo := new(MockEmailRepo)
+	uRepo := new(MockEmailURepo)
+	mailService := new(MockMailService)
+	s := NewEmailService(repo, uRepo, mailService)
+
+	email := "alreadyverified@example.com"
+	userID := uuid.New()
+	alreadyVerifiedUser := model.User{
+		ID:            userID,
+		Email:         email,
+		Name:          "Test User",
+		EmailVerified: true, // Already verified
+	}
+
+	uRepo.On("FindByEmail", email).Return(alreadyVerifiedUser, nil)
+
+	// Act
+	err := s.ResendVerificationEmail(email)
+
+	// Assert
+	assert.NotNil(t, err)
+	assert.Equal(t, 400, err.Status)
+	assert.Contains(t, err.Message, "already verified")
 }
